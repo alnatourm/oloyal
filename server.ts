@@ -17,13 +17,63 @@ let MASTER_ISSUER_ID = '3388000000022819402'; // Official Google Pay & Wallet Ma
 let SERVICE_ACCOUNT_EMAIL = 'id-banlis-wallet@walletcard-514107.iam.gserviceaccount.com';
 let PRIVATE_KEY_PEM = '';
 
+function normalizeWalletPrivateKey(raw: string): string {
+  let key = String(raw || '').trim();
+
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1);
+  }
+
+  key = key.replace(/\\\\r?\\\\n/g, '\n');
+
+  // Accept a complete PKCS#8 PEM only. Do not strip or rewrite key material.
+  if (
+    !key.startsWith('-----BEGIN PRIVATE KEY-----') ||
+    !key.includes('-----END PRIVATE KEY-----')
+  ) {
+    throw new Error('Invalid Google Wallet signing key configuration');
+  }
+
+  return key.endsWith('\n') ? key : key + '\n';
+}
+
 function signGoogleWalletJwt(payload: any, serviceAccountEmail: string, privateKeyPem?: string): string {
+  const walletOrigin = String(process.env.GOOGLE_WALLET_ORIGIN || '').trim();
+  if (!walletOrigin) {
+    throw new Error('GOOGLE_WALLET_ORIGIN is not configured');
+  }
+
+  let parsedOrigin: URL;
+  try {
+    parsedOrigin = new URL(walletOrigin);
+  } catch {
+    throw new Error('GOOGLE_WALLET_ORIGIN must be a valid HTTPS origin');
+  }
+  if (
+    parsedOrigin.protocol !== 'https:' ||
+    parsedOrigin.origin !== walletOrigin ||
+    parsedOrigin.pathname !== '/' ||
+    parsedOrigin.search ||
+    parsedOrigin.hash
+  ) {
+    throw new Error('GOOGLE_WALLET_ORIGIN must contain only the HTTPS scheme and domain');
+  }
+
+  if (!privateKeyPem) {
+    throw new Error('Google Wallet private key is not configured');
+  }
+
+  const key = normalizeWalletPrivateKey(privateKeyPem);
   const header = { alg: 'RS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
 
   const jwtPayload = {
     iss: serviceAccountEmail,
     aud: 'google',
+    origins: [parsedOrigin.origin],
     typ: 'savetowallet',
     iat: now,
     exp: now + 3600,
@@ -34,27 +84,12 @@ function signGoogleWalletJwt(payload: any, serviceAccountEmail: string, privateK
   const base64Payload = Buffer.from(JSON.stringify(jwtPayload)).toString('base64url');
   const unsignedToken = `${base64Header}.${base64Payload}`;
 
-  if (privateKeyPem && privateKeyPem.includes('BEGIN PRIVATE KEY')) {
-    try {
-      let key = String(privateKeyPem || '').trim();
-      if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
-        key = key.slice(1, -1);
-      }
-      key = key.replace(/\\r?\\n/g, '\n');
-      if (!key.endsWith('\n')) key += '\n';
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(unsignedToken);
+  signer.end();
+  const signature = signer.sign(key, 'base64url');
 
-      const signer = crypto.createSign('RSA-SHA256');
-      signer.update(unsignedToken);
-      signer.end();
-      const signature = signer.sign(key, 'base64url');
-      return `${unsignedToken}.${signature}`;
-    } catch (err) {
-      console.error('[RSA256 Sign Error]', err);
-    }
-  }
-
-  const mockSig = Buffer.from('DEV_SIMULATED_RSA256_SIGNATURE').toString('base64url');
-  return `${unsignedToken}.${mockSig}`;
+  return `${unsignedToken}.${signature}`;
 }
 
 // In-Memory Multi-Tenant Store DB (Simulating PostgreSQL / MongoDB)
