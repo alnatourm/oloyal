@@ -8,25 +8,31 @@ export const CustomerEnrollmentView: React.FC = () => {
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [jwtLink, setJwtLink] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
-  // Generate dynamic pass link on mount or form submission
+  // Generate a pass only when the API confirms that a signed Save URL was created.
   const generatePass = async (name: string, userEmail: string, userPhone: string) => {
     setIsLoading(true);
+    setErrorMessage('');
     try {
       const res = await fetch('/api/tenants/banlis-bistro/enroll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email: userEmail, phone: userPhone }),
       });
-      const data = await res.json();
-      if (data.saveToWalletUrl) {
-        setJwtLink(data.saveToWalletUrl);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || typeof data.saveToWalletUrl !== 'string' || !data.saveToWalletUrl.startsWith('https://pay.google.com/gp/v/save/')) {
+        throw new Error(data.error || 'The Wallet pass could not be created. Please check the server credentials and origin.');
       }
+      setJwtLink(data.saveToWalletUrl);
+      return data.saveToWalletUrl as string;
     } catch (err) {
-      console.log('Error generating pass:', err);
+      const message = err instanceof Error ? err.message : 'Unable to create the Wallet pass.';
+      setErrorMessage(message);
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -40,8 +46,12 @@ export const CustomerEnrollmentView: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     sounds.chime();
-    await generatePass(customerName, email, phone);
-    setIsSubmitted(true);
+    try {
+      await generatePass(customerName, email, phone);
+      setIsSubmitted(true);
+    } catch {
+      setIsSubmitted(false);
+    }
   };
 
   const handleCopyLink = () => {
@@ -166,6 +176,11 @@ export const CustomerEnrollmentView: React.FC = () => {
               </div>
             </div>
 
+            {errorMessage && (
+              <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+                {errorMessage}
+              </div>
+            )}
             <button
               type="submit"
               disabled={isLoading}
