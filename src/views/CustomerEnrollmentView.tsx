@@ -13,7 +13,7 @@ export const CustomerEnrollmentView: React.FC = () => {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
-  // Generate a pass only when the API confirms that a signed Save URL was created.
+  // Generate a pass only when the API confirms that member was saved in DB & signed Save URL was created.
   const generatePass = async (name: string, userEmail: string, userPhone: string) => {
     setIsLoading(true);
     setErrorMessage('');
@@ -24,14 +24,16 @@ export const CustomerEnrollmentView: React.FC = () => {
         body: JSON.stringify({ name, email: userEmail, phone: userPhone }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || typeof data.saveToWalletUrl !== 'string' || !data.saveToWalletUrl.startsWith('https://pay.google.com/gp/v/save/')) {
-        throw new Error(data.error || 'The Wallet pass could not be created. Please check the server credentials and origin.');
+      if (!res.ok || !data.member || typeof data.saveToWalletUrl !== 'string' || !data.saveToWalletUrl.startsWith('https://pay.google.com/gp/v/save/')) {
+        throw new Error(data.error || 'Failed to save member in database or sign Google Wallet pass.');
       }
       setJwtLink(data.saveToWalletUrl);
-      return data.saveToWalletUrl as string;
+      setIsSubmitted(true);
+      return data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to create the Wallet pass.';
       setErrorMessage(message);
+      setIsSubmitted(false);
       throw err;
     } finally {
       setIsLoading(false);
@@ -43,9 +45,8 @@ export const CustomerEnrollmentView: React.FC = () => {
     sounds.chime();
     try {
       await generatePass(customerName, email, phone);
-      setIsSubmitted(true);
     } catch {
-      setIsSubmitted(false);
+      // Error handled in generatePass
     }
   };
 

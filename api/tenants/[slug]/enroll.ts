@@ -6,7 +6,6 @@ const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 const MASTER_ISSUER_ID = process.env.ISSUER_ID || '3388000000022258509';
 const SERVICE_ACCOUNT_EMAIL =
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'oloyal-wallet-sa@banlis-bistro-app.iam.gserviceaccount.com';
-const PRIVATE_KEY_PEM = process.env.GOOGLE_PRIVATE_KEY || '';
 
 function normalizeWalletPrivateKey(rawKey?: string): string {
   let k = rawKey || process.env.GOOGLE_PRIVATE_KEY || '';
@@ -94,12 +93,9 @@ function signGoogleWalletJwt(
   const base64Payload = Buffer.from(JSON.stringify(jwtPayload)).toString('base64url');
   const unsignedToken = `${base64Header}.${base64Payload}`;
 
-  if (!privateKeyPem || privateKeyPem.trim().length === 0) {
-    throw new Error('Missing GOOGLE_PRIVATE_KEY - Cannot sign Google Wallet JWT token.');
-  }
+  const keyPem = normalizeWalletPrivateKey(privateKeyPem);
 
   try {
-    const keyPem = normalizeWalletPrivateKey(privateKeyPem);
     const keyObj = crypto.createPrivateKey({
       key: keyPem,
       format: 'pem',
@@ -108,7 +104,6 @@ function signGoogleWalletJwt(
     return `${unsignedToken}.${sigBuf.toString('base64url')}`;
   } catch (err: any) {
     try {
-      const keyPem = normalizeWalletPrivateKey(privateKeyPem);
       const signer = crypto.createSign('RSA-SHA256');
       signer.update(unsignedToken);
       signer.end();
@@ -126,12 +121,16 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const slug = req.query?.slug || req.query?.params?.slug;
+  const slug = req.query?.slug || req.query?.params?.slug || 'banlis-bistro';
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
   const { name, email, phone } = body;
 
-  let tenant: any = null;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Customer name is required' });
+  }
 
+  // 1. SELECT tenant by slug
+  let tenant: any = null;
   if (sql && slug) {
     try {
       const rows = await sql`SELECT * FROM tenants WHERE slug = ${slug} OR id = ${slug} LIMIT 1;`;
@@ -156,9 +155,51 @@ export default async function handler(req: any, res: any) {
     };
   }
 
-  const customerId = Math.floor(100000 + Math.random() * 900000).toString();
-  const objectId = `${MASTER_ISSUER_ID}.customer_${customerId}_obj`;
+  const memberIdCode = `PL-${Math.floor(100000 + Math.random() * 900000)}`;
+  const uuid = `mem-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const objectId = `${MASTER_ISSUER_ID}.customer_${memberIdCode.replace(/[^a-zA-Z0-9_.]/g, '')}_obj`;
 
+  const memberName = name.trim();
+  const memberPhone = phone?.trim() || '';
+  const memberEmail = email?.trim() || '';
+
+  // 2. INSERT into members & 3. INSERT into point_transactions
+  let insertedMember: any = null;
+  if (sql) {
+    try {
+      const rows = await sql`
+        INSERT INTO members (id, tenant_id, name, email, phone, member_id, points, balance_cents, google_object_id)
+        VALUES (${uuid}, ${tenant.id}, ${memberName}, ${memberEmail}, ${memberPhone}, ${memberIdCode}, 100, 0, ${objectId})
+        RETURNING *;
+      `;
+      if (rows.length > 0) {
+        insertedMember = rows[0];
+      }
+
+      const txId = `tx-${Date.now()}`;
+      await sql`
+        INSERT INTO point_transactions (id, member_id, change_amount, reason)
+        VALUES (${txId}, ${uuid}, 100, 'Welcome Bonus');
+      `;
+    } catch (err: any) {
+      console.error('[Neon Postgres API] DB enrollment error:', err);
+      return res.status(500).json({ error: `Failed to save member in database: ${err?.message || 'Database error'}` });
+    }
+  }
+
+  const finalMember = insertedMember || {
+    id: uuid,
+    tenant_id: tenant.id,
+    name: memberName,
+    email: memberEmail,
+    phone: memberPhone,
+    member_id: memberIdCode,
+    points: 100,
+    balance_cents: 0,
+    google_object_id: objectId,
+  };
+
+  // 4. Sign Google Wallet JWT
   const logoUri =
     tenant.logo &&
     tenant.logo.startsWith('http') &&
@@ -191,12 +232,12 @@ export default async function handler(req: any, res: any) {
     id: objectId,
     classId: tenant.class_id,
     state: 'ACTIVE',
-    accountId: customerId,
-    accountName: name || 'Valued Member',
+    accountId: memberIdCode,
+    accountName: memberName,
     barcode: {
       type: 'QR_CODE',
-      value: customerId,
-      alternateText: customerId,
+      value: memberIdCode,
+      alternateText: memberIdCode,
     },
     loyaltyPoints: {
       label: 'Points',
@@ -205,8 +246,8 @@ export default async function handler(req: any, res: any) {
       },
     },
     textModulesData: [
-      { id: 'mod_member', header: 'MEMBER', body: name || 'Valued Member' },
-      { id: 'mod_phone', header: 'PHONE', body: phone || customerId },
+      { id: 'mod_member', header: 'MEMBER', body: memberName },
+      { id: 'mod_phone', header: 'PHONE', body: memberPhone || memberIdCode },
       { id: 'mod_points', header: 'POINTS', body: '100 Points - Welcome Bonus' },
     ],
   };
@@ -221,45 +262,23 @@ export default async function handler(req: any, res: any) {
   if (req.headers.referer) requestOrigins.push(String(req.headers.referer));
 
   try {
-    const signedJwtToken = signGoogleWalletJwt(jwtPayload, SERVICE_ACCOUNT_EMAIL, PRIVATE_KEY_PEM, requestOrigins);
+    const signedJwtToken = signGoogleWalletJwt(
+      jwtPayload,
+      SERVICE_ACCOUNT_EMAIL,
+      process.env.GOOGLE_PRIVATE_KEY,
+      requestOrigins
+    );
     const saveToWalletUrl = `https://pay.google.com/gp/v/save/${signedJwtToken}`;
-
-    const memberName = name || 'Guest Member';
-    const memberPhone = phone || '';
-    const memberEmail = email || '';
-
-    if (sql) {
-      try {
-        await sql`
-          INSERT INTO members (id, tenant_id, name, phone, email, member_id, points, balance_cents, google_object_id)
-          VALUES (${customerId}, ${tenant.id}, ${memberName}, ${memberPhone}, ${memberEmail}, ${customerId}, 100, 0, ${objectId});
-        `;
-
-        const txId = `tx-${Date.now()}`;
-        await sql`
-          INSERT INTO point_transactions (id, member_id, change_amount, reason)
-          VALUES (${txId}, ${customerId}, 100, 'Welcome Bonus');
-        `;
-      } catch (err) {
-        console.error('[Neon Postgres API] INSERT member error:', err);
-      }
-    }
 
     return res.status(200).json({
       success: true,
-      member: {
-        id: customerId,
-        tenantId: tenant.id,
-        name: memberName,
-        phone: memberPhone,
-        email: memberEmail,
-        points: 100,
-        googleObjectId: objectId,
-      },
+      member: finalMember,
       saveToWalletUrl,
+      walletUrl: saveToWalletUrl,
+      qr: memberIdCode,
     });
   } catch (err: any) {
-    console.error('[Enroll Error]:', err);
-    return res.status(500).json({ error: err.message || 'Failed to generate pass' });
+    console.error('[Enrollment JWT Error]:', err);
+    return res.status(500).json({ error: err.message || 'Failed to sign Google Wallet pass' });
   }
 }
