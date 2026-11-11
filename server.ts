@@ -13,9 +13,9 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 
 // Master Issuer Config (Mutable)
-let MASTER_ISSUER_ID = '3388000000022819402'; // Official Google Pay & Wallet Master Issuer ID
-let SERVICE_ACCOUNT_EMAIL = 'id-banlis-wallet@walletcard-514107.iam.gserviceaccount.com';
-let PRIVATE_KEY_PEM = '';
+let MASTER_ISSUER_ID = process.env.ISSUER_ID || '3388000000022819402';
+let SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL || 'id-banlis-wallet@walletcard-514107.iam.gserviceaccount.com';
+let PRIVATE_KEY_PEM = process.env.GOOGLE_PRIVATE_KEY || '';
 
 function normalizeWalletPrivateKey(raw: string): string {
   let key = String(raw || '').trim();
