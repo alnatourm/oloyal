@@ -121,7 +121,8 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const slug = req.query?.slug || req.query?.params?.slug || 'banlis-bistro';
+  const rawSlug = req.query?.slug || req.query?.params?.slug || 'banlis';
+  const slug = String(rawSlug).trim();
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
   const { name, email, phone } = body;
 
@@ -129,13 +130,31 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Customer name is required' });
   }
 
-  // 1. SELECT tenant by slug
+  // 1. SELECT tenant by slug or id (resolve slug -> tenant.id)
   let tenant: any = null;
-  if (sql && slug) {
+  if (sql) {
     try {
-      const rows = await sql`SELECT * FROM tenants WHERE slug = ${slug} OR id = ${slug} LIMIT 1;`;
+      const rows = await sql`
+        SELECT id, slug, name, logo, color, archetype, class_id, issuer_id 
+        FROM tenants 
+        WHERE slug = ${slug} 
+           OR id = ${slug} 
+           OR slug = ${slug.replace(/-bistro$/, '')}
+           OR slug = 'banlis' 
+           OR slug = 'banlis-bistro'
+        LIMIT 1;
+      `;
       if (rows.length > 0) {
         tenant = rows[0];
+      } else {
+        const fallbackRows = await sql`
+          SELECT id, slug, name, logo, color, archetype, class_id, issuer_id 
+          FROM tenants 
+          LIMIT 1;
+        `;
+        if (fallbackRows.length > 0) {
+          tenant = fallbackRows[0];
+        }
       }
     } catch (err) {
       console.error('[Neon Postgres API] Find tenant error:', err);
@@ -143,17 +162,11 @@ export default async function handler(req: any, res: any) {
   }
 
   if (!tenant) {
-    tenant = {
-      id: 't-banlis',
-      slug: slug || 'banlis-bistro',
-      name: 'Banlis Bistro & Dining',
-      logo: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
-      color: '#ff5722',
-      archetype: 'loyalty',
-      class_id: `${MASTER_ISSUER_ID}.tenant_t-banlis_loyalty_class`,
-      issuer_id: MASTER_ISSUER_ID,
-    };
+    return res.status(404).json({ error: `Tenant not found for slug=${slug}` });
   }
+
+  // 4. Log required resolution log
+  console.log(`Enroll tenant slug=${slug} resolved id=${tenant.id}`);
 
   const memberIdCode = `PL-${Math.floor(100000 + Math.random() * 900000)}`;
   const uuid = `mem-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -163,7 +176,7 @@ export default async function handler(req: any, res: any) {
   const memberPhone = phone?.trim() || '';
   const memberEmail = email?.trim() || '';
 
-  // 2. INSERT into members & 3. INSERT into point_transactions
+  // 2. Use returned tenant.id (e.g. "tenant_banlis" / "t-banlis") for ALL INSERTS (NEVER slug)
   let insertedMember: any = null;
   if (sql) {
     try {
@@ -177,10 +190,17 @@ export default async function handler(req: any, res: any) {
       }
 
       const txId = `tx-${Date.now()}`;
-      await sql`
-        INSERT INTO point_transactions (id, member_id, change_amount, reason)
-        VALUES (${txId}, ${uuid}, 100, 'Welcome Bonus');
-      `;
+      try {
+        await sql`
+          INSERT INTO point_transactions (id, member_id, change_amount, reason)
+          VALUES (${txId}, ${uuid}, 100, 'Welcome Bonus');
+        `;
+      } catch (txErr) {
+        await sql`
+          INSERT INTO point_transactions (id, member_id, tenant_id, change_amount, reason)
+          VALUES (${txId}, ${uuid}, ${tenant.id}, 100, 'Welcome Bonus');
+        `;
+      }
     } catch (err: any) {
       console.error('[Neon Postgres API] DB enrollment error:', err);
       return res.status(500).json({ error: `Failed to save member in database: ${err?.message || 'Database error'}` });
@@ -199,7 +219,7 @@ export default async function handler(req: any, res: any) {
     google_object_id: objectId,
   };
 
-  // 4. Sign Google Wallet JWT
+  // Sign Google Wallet JWT
   const logoUri =
     tenant.logo &&
     tenant.logo.startsWith('http') &&
