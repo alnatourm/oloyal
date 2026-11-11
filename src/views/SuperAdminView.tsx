@@ -33,7 +33,7 @@ export const SuperAdminView: React.FC = () => {
       brandColor: '#ff5722',
       logoUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAOdafCB4wuMaEYVho68VUTqz9Y9XuYsx0C4hf0Olcom_yduI7B3cOo8i7RAkWa3UvTsohpH0hrNqKDM6XNTvmwq36_a2_h_5xNeNwwPY1b22ghlaXplKV5av5E5K9HWG5ArAvPIVSkcYDA1vc9p_dp0PjtRGsScjJ8bGjt452B-beCSpH0LfjCskKenY1sH8Cd3Ep6JqQ6yq1PtNgl7QajthH7zfLTDGAGJsNe9CI',
       archetype: 'loyalty',
-      classId: '3388000000022819402.tenant_banlis_bistro_loyalty',
+      classId: '3388000000022258509.tenant_banlis_bistro_loyalty',
       plan: 'growth',
       passLimit: 5000,
       passCount: 3842,
@@ -52,7 +52,7 @@ export const SuperAdminView: React.FC = () => {
       brandColor: '#107c41',
       logoUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
       archetype: 'gift',
-      classId: '3388000000022819402.tenant_artisan_gift',
+      classId: '3388000000022258509.tenant_artisan_gift',
       plan: 'starter',
       passLimit: 500,
       passCount: 312,
@@ -71,7 +71,7 @@ export const SuperAdminView: React.FC = () => {
       brandColor: '#007caf',
       logoUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=150&auto=format&fit=crop',
       archetype: 'ticket',
-      classId: '3388000000022819402.tenant_skyline_ticket',
+      classId: '3388000000022258509.tenant_skyline_ticket',
       plan: 'scale',
       passLimit: 50000,
       passCount: 12450,
@@ -90,7 +90,7 @@ export const SuperAdminView: React.FC = () => {
       brandColor: '#7b1fa2',
       logoUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=150&auto=format&fit=crop',
       archetype: 'loyalty',
-      classId: '3388000000022819402.tenant_urban_loyalty',
+      classId: '3388000000022258509.tenant_urban_loyalty',
       plan: 'starter',
       passLimit: 500,
       passCount: 184,
@@ -109,7 +109,7 @@ export const SuperAdminView: React.FC = () => {
       brandColor: '#d32f2f',
       logoUrl: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=150&auto=format&fit=crop',
       archetype: 'benefit',
-      classId: '3388000000022819402.tenant_kuro_vip',
+      classId: '3388000000022258509.tenant_kuro_vip',
       plan: 'growth',
       passLimit: 5000,
       passCount: 2190,
@@ -131,7 +131,7 @@ export const SuperAdminView: React.FC = () => {
   const [managingTenant, setManagingTenant] = useState<TenantStore | null>(null);
 
   // Google Wallet Master Setup Credentials
-  const [issuerIdInput, setIssuerIdInput] = useState('3388000000022819402');
+  const [issuerIdInput, setIssuerIdInput] = useState('3388000000022258509');
   const [saEmailInput, setSaEmailInput] = useState('id-banlis-wallet@walletcard-514107.iam.gserviceaccount.com');
   const [saPrivateKeyInput, setSaPrivateKeyInput] = useState('');
   const [isTestingConn, setIsTestingConn] = useState(false);
@@ -211,7 +211,7 @@ export const SuperAdminView: React.FC = () => {
 
     const slug = newStoreName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const newId = `t-${Date.now()}`;
-    const generatedClassId = `3388000000022819402.tenant_${slug}_${newArchetype}`;
+    const generatedClassId = `3388000000022258509.tenant_${slug}_${newArchetype}`;
     const passLimitMap = { starter: 500, growth: 5000, scale: 50000 };
 
     const createdTenant: TenantStore = {
@@ -339,7 +339,7 @@ export const SuperAdminView: React.FC = () => {
             Google Wallet Master Issuer Command Center
           </h2>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Master Issuer ID: <span className="font-mono text-on-surface font-bold">3388000000022819402</span> • RSA256 JWT Signing Active
+            Master Issuer ID: <span className="font-mono text-on-surface font-bold">3388000000022258509</span> • RSA256 JWT Signing Active
           </p>
         </div>
 
@@ -669,7 +669,7 @@ export const SuperAdminView: React.FC = () => {
                     Provision New Store Merchant
                   </h3>
                   <p className="font-body-sm text-body-sm text-on-surface-variant">
-                    Mint Google Wallet Class Template under Master Issuer ID 3388000000022819402
+                    Mint Google Wallet Class Template under Master Issuer ID 3388000000022258509
                   </p>
                 </div>
               </div>
@@ -833,7 +833,7 @@ export const SuperAdminView: React.FC = () => {
                   <p>
                     Creating this merchant will issue Google Wallet LoyaltyClass{' '}
                     <span className="font-mono text-[#ff5722]">
-                      3388000000022819402.tenant_{newStoreName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'store'}_
+                      3388000000022258509.tenant_{newStoreName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'store'}_
                       {newArchetype}
                     </span>{' '}
                     and generate an RSA256 JWT minting key instantly.
@@ -1182,7 +1182,7 @@ export const SuperAdminView: React.FC = () => {
                     <div className="grid grid-cols-2 gap-3 text-[12px] font-mono">
                       <div className="p-3 rounded-lg bg-surface-container-lowest">
                         <span className="text-outline block text-[10px] uppercase font-bold">Issuer ID</span>
-                        <span className="text-on-surface font-bold">3388000000022819402</span>
+                        <span className="text-on-surface font-bold">3388000000022258509</span>
                       </div>
                       <div className="p-3 rounded-lg bg-surface-container-lowest">
                         <span className="text-outline block text-[10px] uppercase font-bold">Review Status</span>
@@ -1349,7 +1349,7 @@ export const SuperAdminView: React.FC = () => {
                   required
                   value={issuerIdInput}
                   onChange={(e) => setIssuerIdInput(e.target.value)}
-                  placeholder="e.g. 3388000000022819402"
+                  placeholder="e.g. 3388000000022258509"
                   className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface font-mono font-bold text-body-sm focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
                 />
                 <span className="text-[11px] text-outline mt-1 block">

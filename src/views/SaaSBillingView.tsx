@@ -79,7 +79,7 @@ export const SaaSBillingView: React.FC = () => {
             Subscription Plans &amp; Tenant Limits
           </h2>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Issuer ID: 3388000000022819402 • Active Google Pay Service Account Credentials
+            Issuer ID: 3388000000022258509 • Active Google Pay Service Account Credentials
           </p>
         </div>
 

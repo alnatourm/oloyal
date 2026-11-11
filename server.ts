@@ -13,7 +13,7 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 
 // Master Issuer Config (Mutable)
-let MASTER_ISSUER_ID = process.env.ISSUER_ID || '3388000000022819402';
+let MASTER_ISSUER_ID = process.env.ISSUER_ID || '3388000000022258509';
 let SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL || 'id-banlis-wallet@walletcard-514107.iam.gserviceaccount.com';
 let PRIVATE_KEY_PEM = process.env.GOOGLE_PRIVATE_KEY || `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6SaS1OgaOqT5I
@@ -88,24 +88,42 @@ function normalizeWalletPrivateKey(raw: string): string {
   return key.endsWith('\n') ? key : key + '\n';
 }
 
-function signGoogleWalletJwt(payload: any, serviceAccountEmail: string, privateKeyPem?: string): string {
-  const walletOrigin = String(process.env.GOOGLE_WALLET_ORIGIN || process.env.APP_URL || 'https://banlis-wallet.vercel.app').trim();
+function signGoogleWalletJwt(
+  payload: any,
+  serviceAccountEmail: string,
+  privateKeyPem?: string,
+  extraOrigins: string[] = []
+): string {
+  const defaultOrigins = [
+    'https://banlis-wallet.vercel.app',
+    'https://ais-dev-v6nnfts2ifjcwfsonsfq2o-86957709213.us-west1.run.app',
+    'https://ais-pre-v6nnfts2ifjcwfsonsfq2o-86957709213.us-west1.run.app',
+  ];
 
-  let parsedOrigin = 'https://banlis-wallet.vercel.app';
-  try {
-    const u = new URL(walletOrigin.startsWith('http') ? walletOrigin : `https://${walletOrigin}`);
-    parsedOrigin = u.origin;
-  } catch {
-    parsedOrigin = 'https://banlis-wallet.vercel.app';
-  }
+  if (process.env.GOOGLE_WALLET_ORIGIN) defaultOrigins.push(process.env.GOOGLE_WALLET_ORIGIN);
+  if (process.env.APP_URL) defaultOrigins.push(process.env.APP_URL);
+
+  const originsSet = new Set<string>();
+
+  [...defaultOrigins, ...extraOrigins].forEach((orig) => {
+    if (!orig) return;
+    try {
+      const u = new URL(orig.startsWith('http') ? orig : `https://${orig}`);
+      originsSet.add(u.origin);
+    } catch {
+      // Ignore invalid URL
+    }
+  });
+
+  const originsList = Array.from(originsSet);
 
   const header = { alg: 'RS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
 
-  const jwtPayload = {
+  const jwtPayload: Record<string, any> = {
     iss: serviceAccountEmail,
     aud: 'google',
-    origins: [parsedOrigin],
+    origins: originsList,
     typ: 'savetowallet',
     iat: now,
     exp: now + 3600,
@@ -116,31 +134,30 @@ function signGoogleWalletJwt(payload: any, serviceAccountEmail: string, privateK
   const base64Payload = Buffer.from(JSON.stringify(jwtPayload)).toString('base64url');
   const unsignedToken = `${base64Header}.${base64Payload}`;
 
-  if (privateKeyPem && privateKeyPem.trim().length > 0) {
-    try {
-      const keyPem = normalizeWalletPrivateKey(privateKeyPem);
-      const keyObj = crypto.createPrivateKey({
-        key: keyPem,
-        format: 'pem',
-      });
-      const sigBuf = crypto.sign('SHA256', Buffer.from(unsignedToken), keyObj);
-      return `${unsignedToken}.${sigBuf.toString('base64url')}`;
-    } catch {
-      try {
-        const keyPem = normalizeWalletPrivateKey(privateKeyPem);
-        const signer = crypto.createSign('RSA-SHA256');
-        signer.update(unsignedToken);
-        signer.end();
-        const signature = signer.sign(keyPem, 'base64url');
-        return `${unsignedToken}.${signature}`;
-      } catch {
-        // Silent fallback to simulated signature for dev mode
-      }
-    }
+  if (!privateKeyPem || privateKeyPem.trim().length === 0) {
+    throw new Error('Missing GOOGLE_PRIVATE_KEY - Cannot sign Google Wallet JWT token.');
   }
 
-  const mockSig = Buffer.from('DEV_SIMULATED_RSA256_SIGNATURE').toString('base64url');
-  return `${unsignedToken}.${mockSig}`;
+  try {
+    const keyPem = normalizeWalletPrivateKey(privateKeyPem);
+    const keyObj = crypto.createPrivateKey({
+      key: keyPem,
+      format: 'pem',
+    });
+    const sigBuf = crypto.sign('SHA256', Buffer.from(unsignedToken), keyObj);
+    return `${unsignedToken}.${sigBuf.toString('base64url')}`;
+  } catch (err: any) {
+    try {
+      const keyPem = normalizeWalletPrivateKey(privateKeyPem);
+      const signer = crypto.createSign('RSA-SHA256');
+      signer.update(unsignedToken);
+      signer.end();
+      const signature = signer.sign(keyPem, 'base64url');
+      return `${unsignedToken}.${signature}`;
+    } catch (fallbackErr: any) {
+      throw new Error(`RSA256 Sign Error: ${err?.message || fallbackErr?.message || 'Invalid RSA Private Key'}`);
+    }
+  }
 }
 
 // In-Memory Multi-Tenant Store DB (Simulating PostgreSQL / MongoDB)
@@ -338,12 +355,30 @@ app.post('/api/tenants/:slug/enroll', (req: Request, res: Response) => {
   const customerId = Math.floor(100000 + Math.random() * 900000).toString();
   const objectId = `${MASTER_ISSUER_ID}.customer_${customerId}_obj`;
 
+  const logoUri =
+    tenant.logoUrl &&
+    tenant.logoUrl.startsWith('http') &&
+    !tenant.logoUrl.includes('googleusercontent.com/aida-public/')
+      ? tenant.logoUrl
+      : 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop';
+
   const loyaltyClass = {
     id: tenant.classId,
     issuerName: tenant.name,
     programName: `${tenant.name} Loyalty`,
+    programLogo: {
+      sourceUri: {
+        uri: logoUri,
+      },
+      contentDescription: {
+        defaultValue: {
+          language: 'en-US',
+          value: `${tenant.name} Logo`,
+        },
+      },
+    },
     reviewStatus: 'UNDER_REVIEW',
-    hexBackgroundColor: tenant.brandColor || '#1a1a1a',
+    hexBackgroundColor: tenant.brandColor || '#ff5722',
     accountNameLabel: 'Member',
     accountIdLabel: 'Member ID',
   };
@@ -359,11 +394,16 @@ app.post('/api/tenants/:slug/enroll', (req: Request, res: Response) => {
       value: customerId,
       alternateText: customerId,
     },
-    loyaltyPoints: { balance: { int: 100 }, label: 'Points' },
+    loyaltyPoints: {
+      label: 'Points',
+      balance: {
+        int: 100,
+      },
+    },
     textModulesData: [
-      { header: 'MEMBER', body: name || 'Valued Member' },
-      { header: 'PHONE', body: phone || customerId },
-      { header: 'POINTS', body: '100 Points - Welcome Bonus' },
+      { id: 'mod_member', header: 'MEMBER', body: name || 'Valued Member' },
+      { id: 'mod_phone', header: 'PHONE', body: phone || customerId },
+      { id: 'mod_points', header: 'POINTS', body: '100 Points - Welcome Bonus' },
     ],
   };
 
@@ -372,7 +412,11 @@ app.post('/api/tenants/:slug/enroll', (req: Request, res: Response) => {
     loyaltyObjects: [loyaltyObject],
   };
 
-  const signedJwtToken = signGoogleWalletJwt(jwtPayload, SERVICE_ACCOUNT_EMAIL, PRIVATE_KEY_PEM);
+  const requestOrigins: string[] = [];
+  if (req.headers.origin) requestOrigins.push(String(req.headers.origin));
+  if (req.headers.referer) requestOrigins.push(String(req.headers.referer));
+
+  const signedJwtToken = signGoogleWalletJwt(jwtPayload, SERVICE_ACCOUNT_EMAIL, PRIVATE_KEY_PEM, requestOrigins);
   const saveToWalletUrl = `https://pay.google.com/gp/v/save/${signedJwtToken}`;
 
   const newPass: CustomerPass = {
@@ -462,7 +506,7 @@ app.get('/api/tenants/:id/billing', (req: Request, res: Response) => {
       percentage: Math.round((tenant.passCount / tenant.passLimit) * 100),
     },
     billingCycleEnd: '2026-12-01T00:00:00Z',
-    masterIssuerStatus: 'Active (Issuer ID: 3388000000022819402)',
+    masterIssuerStatus: 'Active (Issuer ID: 3388000000022258509)',
   });
 });
 
