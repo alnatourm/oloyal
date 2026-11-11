@@ -8,20 +8,25 @@ const SERVICE_ACCOUNT_EMAIL =
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'oloyal-wallet-sa@banlis-bistro-app.iam.gserviceaccount.com';
 const PRIVATE_KEY_PEM = process.env.GOOGLE_PRIVATE_KEY || '';
 
-function normalizeWalletPrivateKey(rawKey: string): string {
-  let key = rawKey.trim();
-  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
-    key = key.slice(1, -1).trim();
+function normalizeWalletPrivateKey(rawKey?: string): string {
+  let k = rawKey || process.env.GOOGLE_PRIVATE_KEY || '';
+  k = k.trim().replace(/^"|"$/g, '').replace(/\n/g, '\n').replace(/\\n/g, '\n');
+
+  const hasBegin = k.includes('BEGIN PRIVATE KEY');
+  console.log(`[Google Wallet API] private key length: ${k.length}, has BEGIN: ${hasBegin}`);
+
+  if (!hasBegin) {
+    throw new Error('Invalid GOOGLE_PRIVATE_KEY format');
   }
 
-  const match = key.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----([\s\S]*?)-----END (?:RSA )?PRIVATE KEY-----/);
+  const match = k.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----([\s\S]*?)-----END (?:RSA )?PRIVATE KEY-----/);
   if (match) {
     const rawBody = match[1].replace(/\s+/g, '');
     const chunks = rawBody.match(/.{1,64}/g) || [rawBody];
     return `-----BEGIN PRIVATE KEY-----\n${chunks.join('\n')}\n-----END PRIVATE KEY-----\n`;
   }
 
-  return key.endsWith('\n') ? key : key + '\n';
+  return k.endsWith('\n') ? k : k + '\n';
 }
 
 function signGoogleWalletJwt(

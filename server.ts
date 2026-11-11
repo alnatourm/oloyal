@@ -170,44 +170,25 @@ const fallbackMembers: MemberRow[] = [
   },
 ];
 
-function normalizeWalletPrivateKey(raw: string): string {
-  if (!raw) return '';
-  let key = String(raw).trim();
+function normalizeWalletPrivateKey(raw?: string): string {
+  let k = raw || process.env.GOOGLE_PRIVATE_KEY || '';
+  k = k.trim().replace(/^"|"$/g, '').replace(/\n/g, '\n').replace(/\\n/g, '\n');
 
-  if (key.startsWith('{') && key.endsWith('}')) {
-    try {
-      const parsed = JSON.parse(key);
-      if (parsed.private_key) {
-        key = String(parsed.private_key).trim();
-      }
-    } catch {
-      // Ignore JSON parse error
-    }
+  const hasBegin = k.includes('BEGIN PRIVATE KEY');
+  console.log(`[Google Wallet] private key length: ${k.length}, has BEGIN: ${hasBegin}`);
+
+  if (!hasBegin) {
+    throw new Error('Invalid GOOGLE_PRIVATE_KEY format');
   }
 
-  key = key
-    .replace(/\\r\\n/g, '\n')
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\n')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .trim();
-
-  if (
-    (key.startsWith('"') && key.endsWith('"')) ||
-    (key.startsWith("'") && key.endsWith("'"))
-  ) {
-    key = key.slice(1, -1).trim();
-  }
-
-  const match = key.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----([\s\S]*?)-----END (?:RSA )?PRIVATE KEY-----/);
+  const match = k.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----([\s\S]*?)-----END (?:RSA )?PRIVATE KEY-----/);
   if (match) {
     const rawBody = match[1].replace(/\s+/g, '');
     const chunks = rawBody.match(/.{1,64}/g) || [rawBody];
     return `-----BEGIN PRIVATE KEY-----\n${chunks.join('\n')}\n-----END PRIVATE KEY-----\n`;
   }
 
-  return key.endsWith('\n') ? key : key + '\n';
+  return k.endsWith('\n') ? k : k + '\n';
 }
 
 function signGoogleWalletJwt(
