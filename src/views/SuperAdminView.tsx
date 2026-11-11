@@ -22,103 +22,7 @@ export interface TenantStore {
 }
 
 export const SuperAdminView: React.FC = () => {
-  const [tenants, setTenants] = useState<TenantStore[]>([
-    {
-      id: 't-1',
-      slug: 'banlis-bistro',
-      name: 'Banlis Bistro & Dining',
-      legalEntity: 'Banlis Hospitality Group LLC',
-      ownerName: 'Elena Rostova',
-      ownerEmail: 'elena@banlisbistro.com',
-      brandColor: '#ff5722',
-      logoUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAOdafCB4wuMaEYVho68VUTqz9Y9XuYsx0C4hf0Olcom_yduI7B3cOo8i7RAkWa3UvTsohpH0hrNqKDM6XNTvmwq36_a2_h_5xNeNwwPY1b22ghlaXplKV5av5E5K9HWG5ArAvPIVSkcYDA1vc9p_dp0PjtRGsScjJ8bGjt452B-beCSpH0LfjCskKenY1sH8Cd3Ep6JqQ6yq1PtNgl7QajthH7zfLTDGAGJsNe9CI',
-      archetype: 'loyalty',
-      classId: '3388000000022258509.tenant_banlis_bistro_loyalty',
-      plan: 'growth',
-      passLimit: 5000,
-      passCount: 3842,
-      status: 'Active',
-      createdAt: '2024-01-15T08:00:00Z',
-      apiKey: 'pk_live_banlis_889104277',
-      baseEarnRate: 10,
-    },
-    {
-      id: 't-2',
-      slug: 'artisan-roastery',
-      name: 'Artisan Coffee Roasters',
-      legalEntity: 'Artisan Beans Co. LLC',
-      ownerName: 'Devon Sterling',
-      ownerEmail: 'devon@artisanroasters.com',
-      brandColor: '#107c41',
-      logoUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
-      archetype: 'gift',
-      classId: '3388000000022258509.tenant_artisan_gift',
-      plan: 'starter',
-      passLimit: 500,
-      passCount: 312,
-      status: 'Active',
-      createdAt: '2024-02-10T10:30:00Z',
-      apiKey: 'pk_live_artisan_3129841',
-      baseEarnRate: 12,
-    },
-    {
-      id: 't-3',
-      slug: 'skyline-pavilion',
-      name: 'Skyline Live Events',
-      legalEntity: 'Skyline Entertainment Group',
-      ownerName: 'Marcus Vance',
-      ownerEmail: 'm.vance@skylinepavilion.com',
-      brandColor: '#007caf',
-      logoUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=150&auto=format&fit=crop',
-      archetype: 'ticket',
-      classId: '3388000000022258509.tenant_skyline_ticket',
-      plan: 'scale',
-      passLimit: 50000,
-      passCount: 12450,
-      status: 'Active',
-      createdAt: '2023-11-20T14:15:00Z',
-      apiKey: 'pk_live_skyline_9941028',
-      baseEarnRate: 5,
-    },
-    {
-      id: 't-4',
-      slug: 'urban-green',
-      name: 'Urban Green Organic Bakery',
-      legalEntity: 'Urban Bakery LLC',
-      ownerName: 'Sarah Jenkins',
-      ownerEmail: 'sarah@urbangreen.com',
-      brandColor: '#7b1fa2',
-      logoUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=150&auto=format&fit=crop',
-      archetype: 'loyalty',
-      classId: '3388000000022258509.tenant_urban_loyalty',
-      plan: 'starter',
-      passLimit: 500,
-      passCount: 184,
-      status: 'Active',
-      createdAt: '2024-03-01T09:00:00Z',
-      apiKey: 'pk_live_urban_4412093',
-      baseEarnRate: 10,
-    },
-    {
-      id: 't-5',
-      slug: 'kuro-sushi',
-      name: 'Kuro Artisan Omakase',
-      legalEntity: 'Kuro Dining Corp',
-      ownerName: 'Kenji Takahashi',
-      ownerEmail: 'kenji@kuro-sushi.jp',
-      brandColor: '#d32f2f',
-      logoUrl: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=150&auto=format&fit=crop',
-      archetype: 'benefit',
-      classId: '3388000000022258509.tenant_kuro_vip',
-      plan: 'growth',
-      passLimit: 5000,
-      passCount: 2190,
-      status: 'Active',
-      createdAt: '2024-02-18T16:20:00Z',
-      apiKey: 'pk_live_kuro_7719283',
-      baseEarnRate: 15,
-    },
-  ]);
+  const [tenants, setTenants] = useState<TenantStore[]>([]);
 
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,42 +58,39 @@ export const SuperAdminView: React.FC = () => {
   // Management Modal Active Tab
   const [manageTab, setManageTab] = useState<'overview' | 'settings' | 'google-class' | 'status'>('overview');
 
-  useEffect(() => {
-    // Fetch initial tenants from API if available
-    fetch('/api/tenants')
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          // Sync with API data where appropriate
-          const mapped: TenantStore[] = data.map((t: any) => ({
-            id: t.id,
-            slug: t.slug,
-            name: t.name,
-            legalEntity: t.legalEntity || `${t.name} LLC`,
-            ownerName: 'Store Administrator',
-            ownerEmail: `admin@${t.slug}.com`,
-            brandColor: t.brandColor || '#ff5722',
-            logoUrl: t.logoUrl,
-            archetype: t.archetype || 'loyalty',
-            classId: t.classId,
-            plan: t.plan || 'growth',
-            passLimit: t.passLimit || 5000,
-            passCount: t.passCount || 0,
-            status: t.status === 'suspended' ? 'Suspended' : 'Active',
-            createdAt: t.createdAt || new Date().toISOString(),
-            apiKey: `pk_live_${t.slug.replace(/-/g, '_')}_${Math.floor(100000 + Math.random() * 900000)}`,
-            baseEarnRate: 10,
-          }));
+  const fetchTenants = async () => {
+    try {
+      const res = await fetch('/api/tenants');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const mapped: TenantStore[] = data.map((t: any) => ({
+          id: t.id,
+          slug: t.slug,
+          name: t.name,
+          legalEntity: t.legalEntity || `${t.name} LLC`,
+          ownerName: t.ownerName || 'Store Manager',
+          ownerEmail: t.ownerEmail || `admin@${t.slug}.com`,
+          brandColor: t.brandColor || t.color || '#ff5722',
+          logoUrl: t.logoUrl || t.logo || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
+          archetype: t.archetype || 'loyalty',
+          classId: t.classId || t.class_id,
+          plan: t.plan || 'growth',
+          passLimit: t.passLimit || 5000,
+          passCount: Number(t.passCount || t.pass_count || 0),
+          status: t.status === 'suspended' ? 'Suspended' : 'Active',
+          createdAt: t.createdAt || new Date().toISOString(),
+          apiKey: `pk_live_${t.slug.replace(/-/g, '_')}_${Math.floor(100000 + Math.random() * 900000)}`,
+          baseEarnRate: 10,
+        }));
+        setTenants(mapped);
+      }
+    } catch (err) {
+      console.error('Error fetching tenants from DB:', err);
+    }
+  };
 
-          // Merge without duplicate IDs
-          setTenants((prev) => {
-            const existingIds = new Set(prev.map((p) => p.id));
-            const fresh = mapped.filter((m) => !existingIds.has(m.id));
-            return [...prev, ...fresh];
-          });
-        }
-      })
-      .catch((err) => console.log('API sync fallback to local store:', err));
+  useEffect(() => {
+    fetchTenants();
   }, []);
 
   const triggerNotice = (msg: string) => {
@@ -198,7 +99,7 @@ export const SuperAdminView: React.FC = () => {
     setTimeout(() => setNotice(null), 3500);
   };
 
-  // Handle Provisioning New Merchant
+  // Handle Provisioning New Merchant into Neon Postgres DB
   const handleProvisionMerchant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStoreName.trim()) {
@@ -209,64 +110,44 @@ export const SuperAdminView: React.FC = () => {
     sounds.click(800, 0.04);
     setIsSubmitting(true);
 
-    const slug = newStoreName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const newId = `t-${Date.now()}`;
-    const generatedClassId = `3388000000022258509.tenant_${slug}_${newArchetype}`;
-    const passLimitMap = { starter: 500, growth: 5000, scale: 50000 };
-
-    const createdTenant: TenantStore = {
-      id: newId,
-      slug,
-      name: newStoreName.trim(),
-      legalEntity: newLegalEntity.trim() || `${newStoreName.trim()} LLC`,
-      ownerName: newOwnerName.trim() || 'Store Manager',
-      ownerEmail: newOwnerEmail.trim() || `admin@${slug}.com`,
-      brandColor: newBrandColor,
-      logoUrl: newLogoUrl.trim() || 'https://lh3.googleusercontent.com/aida-public/AB6AXuAOdafCB4wuMaEYVho68VUTqz9Y9XuYsx0C4hf0Olcom_yduI7B3cOo8i7RAkWa3UvTsohpH0hrNqKDM6XNTvmwq36_a2_h_5xNeNwwPY1b22ghlaXplKV5av5E5K9HWG5ArAvPIVSkcYDA1vc9p_dp0PjtRGsScjJ8bGjt452B-beCSpH0LfjCskKenY1sH8Cd3Ep6JqQ6yq1PtNgl7QajthH7zfLTDGAGJsNe9CI',
-      archetype: newArchetype,
-      classId: generatedClassId,
-      plan: newPlan,
-      passLimit: passLimitMap[newPlan],
-      passCount: 0,
-      status: 'Active',
-      createdAt: new Date().toISOString(),
-      apiKey: `pk_live_${slug.replace(/-/g, '_')}_${Math.floor(100000 + Math.random() * 900000)}`,
-      baseEarnRate: newEarnRate,
-    };
-
-    // Try posting to backend REST API
     try {
-      await fetch('/api/tenants', {
+      const res = await fetch('/api/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: createdTenant.name,
-          legalEntity: createdTenant.legalEntity,
-          brandColor: createdTenant.brandColor,
-          logoUrl: createdTenant.logoUrl,
-          archetype: createdTenant.archetype,
-          plan: createdTenant.plan,
+          name: newStoreName.trim(),
+          legalEntity: newLegalEntity.trim() || `${newStoreName.trim()} LLC`,
+          brandColor: newBrandColor,
+          logoUrl: newLogoUrl.trim() || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
+          archetype: newArchetype,
+          plan: newPlan,
         }),
       });
+
+      if (res.ok) {
+        await fetchTenants(); // Refetch directly from DB!
+        triggerNotice(`Successfully Provisioned Merchant "${newStoreName.trim()}" in Neon Postgres!`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        triggerNotice(`Error: ${err.error || 'Failed to provision merchant'}`);
+      }
     } catch (err) {
-      console.log('Backend tenant sync:', err);
+      console.error('Create merchant error:', err);
+      triggerNotice('Database connection error');
+    } finally {
+      setIsSubmitting(false);
+      setIsProvisionModalOpen(false);
+
+      // Reset Form
+      setNewStoreName('');
+      setNewLegalEntity('');
+      setNewOwnerName('');
+      setNewOwnerEmail('');
+      setNewBrandColor('#ff5722');
+      setNewLogoUrl('');
+      setNewArchetype('loyalty');
+      setNewPlan('growth');
     }
-
-    setTenants([createdTenant, ...tenants]);
-    setIsSubmitting(false);
-    setIsProvisionModalOpen(false);
-
-    // Reset Form
-    setNewStoreName('');
-    setNewLegalEntity('');
-    setNewOwnerName('');
-    setNewOwnerEmail('');
-    setNewBrandColor('#ff5722');
-    setNewLogoUrl('');
-    setNewArchetype('loyalty');
-    setNewPlan('growth');
-
-    triggerNotice(`Successfully Provisioned Merchant "${createdTenant.name}" & Google LoyaltyClass!`);
   };
 
   // Handle Updates to Managed Tenant

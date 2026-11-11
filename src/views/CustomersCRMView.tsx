@@ -7,99 +7,42 @@ interface CustomersCRMViewProps {
 }
 
 export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionNewMember }) => {
-  const [members, setMembers] = useState<CustomerMember[]>([
-    {
-      id: 'm1',
-      uid: '#PL-89420',
-      name: 'Marcus Vance',
-      avatarUrl:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuAOdafCB4wuMaEYVho68VUTqz9Y9XuYsx0C4hf0Olcom_yduI7B3cOo8i7RAkWa3UvTsohpH0hrNqKDM6XNTvmwq36_a2_h_5xNeNwwPY1b22ghlaXplKV5av5E5K9HWG5ArAvPIVSkcYDA1vc9p_dp0PjtRGsScjJ8bGjt452B-beCSpH0LfjCskKenY1sH8Cd3Ep6JqQ6yq1PtNgl7QajthH7zfLTDGAGJsNe9CI',
-      tier: 'GOLD VIP',
-      tierColor: 'text-primary',
-      tierBg: 'bg-primary-fixed text-on-primary-fixed',
-      points: 1450,
-      tierCap: 2000,
-      entryPoints: 1000,
-      thresholdPoints: 2000,
-      status: 'NFC Active Node',
-      joinedDate: 'Jan 2024',
-      syncedTime: 'Today, 14:28',
-      visitCount: 28,
-    },
-    {
-      id: 'm2',
-      uid: '#PL-77192',
-      name: 'Elena Rostova',
-      avatarUrl:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuB2Z1GPKgmJ1s8Q8Hp3nE8qr3nHdPiyNVpB9xpfDb8E8bY-nU2lFGhWci1j20VjJf-NDTQKwBMB8ociyFWGGjJ2e3WygudmsXccCErzZTF9ybzpbwBPSZuWFVRpeXgnUdYzCi3XVDWn_1REHWJWsameQ2RWDB8yEmQXVNnPWfQDFlxkZhUcFvCzBgyRluzzGx686a_XujkILgrQkQJ9ywBrgQ8GGLav6UxNd4BBIhE',
-      tier: 'SILVER',
-      tierColor: 'text-on-surface',
-      tierBg: 'bg-surface-container-high text-on-surface-variant',
-      points: 820,
-      tierCap: 1000,
-      entryPoints: 500,
-      thresholdPoints: 1000,
-      status: 'Active',
-      joinedDate: 'Mar 2024',
-      syncedTime: '14m ago',
-      visitCount: 14,
-    },
-    {
-      id: 'm3',
-      uid: '#PL-90214',
-      name: 'Devon Sterling',
-      avatarUrl:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuD7z_QTQZbeu7V8XX4Fw5fqJ6K-VxL2wZcL3vCHNnCxOxyCExgKlHQQap6h1I5tB0H6w0gbiUUOZSj4eMlR0QlO2DRhZSs56BE3uQSeshWit_gbWUY_C5zYF3_iQvwEPMMahPsa7yPyoBJboCVPvRjsmig2GG_MR5YzmcilsvvXJFQOG9zaK4R-cUklJ1vTLsp1UkqlGVCXjXEWOFuqr61JA_XFsKhdl7l4ZdPvjZM',
-      tier: 'PLATINUM',
-      tierColor: 'text-primary',
-      tierBg: 'bg-secondary-fixed text-on-secondary-fixed',
-      points: 2840,
-      tierCap: 4000,
-      entryPoints: 2000,
-      thresholdPoints: 4000,
-      status: 'VIP Elite',
-      joinedDate: 'Oct 2023',
-      syncedTime: '1h ago',
-      visitCount: 42,
-    },
-    {
-      id: 'm4',
-      uid: '#PL-62103',
-      name: 'Sarah Jenkins',
-      initials: 'SJ',
-      tier: 'BRONZE',
-      tierColor: 'text-on-surface',
-      tierBg: 'bg-surface-container-high text-on-surface-variant',
-      points: 310,
-      tierCap: 500,
-      entryPoints: 0,
-      thresholdPoints: 500,
-      status: 'Active',
-      joinedDate: 'May 2024',
-      syncedTime: '45m ago',
-      visitCount: 5,
-    },
-    {
-      id: 'm5',
-      uid: '#PL-88301',
-      name: 'Kenji Takahashi',
-      initials: 'KT',
-      tier: 'GOLD VIP',
-      tierColor: 'text-primary',
-      tierBg: 'bg-primary-fixed text-on-primary-fixed',
-      points: 1610,
-      tierCap: 2000,
-      entryPoints: 1000,
-      thresholdPoints: 2000,
-      status: 'Active',
-      joinedDate: 'Nov 2023',
-      syncedTime: '2h ago',
-      visitCount: 22,
-    },
-  ]);
+  const [members, setMembers] = useState<CustomerMember[]>([]);
 
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('m1');
-  const [filterSegment, setFilterSegment] = useState<'vip' | 'all' | 'pending'>('vip');
+  React.useEffect(() => {
+    fetch('/api/passes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const mapped: CustomerMember[] = data.map((m: any) => {
+            const pts = Number(m.points || 0);
+            const tierStr = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
+            return {
+              id: m.id,
+              uid: `#PL-${m.member_id || m.id}`,
+              name: m.customer_name || 'Member',
+              avatarUrl: m.logo_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
+              tier: tierStr,
+              tierColor: tierStr === 'PLATINUM' ? 'text-purple-500' : tierStr === 'GOLD VIP' ? 'text-primary' : 'text-on-surface',
+              tierBg: tierStr === 'PLATINUM' ? 'bg-purple-100 text-purple-800' : tierStr === 'GOLD VIP' ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-surface-container-high text-on-surface-variant',
+              points: pts,
+              tierCap: 2000,
+              entryPoints: 1000,
+              thresholdPoints: 2000,
+              status: 'NFC Active Node',
+              joinedDate: '2026',
+              syncedTime: 'Just now',
+              visitCount: 1,
+            };
+          });
+          setMembers(mapped);
+        }
+      })
+      .catch((err) => console.log('Error fetching members from DB:', err));
+  }, []);
+
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [filterSegment, setFilterSegment] = useState<'vip' | 'all' | 'pending'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 

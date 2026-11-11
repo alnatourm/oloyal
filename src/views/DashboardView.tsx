@@ -8,6 +8,25 @@ export const DashboardView: React.FC = () => {
   const [timeFilter, setTimeFilter] = useState<'today' | '7d' | '30d'>('today');
   const [pushNotice, setPushNotice] = useState<boolean>(false);
 
+  const [dbStats, setDbStats] = useState<{ activeTenants: number; totalPasses: number }>({
+    activeTenants: 1,
+    totalPasses: 1,
+  });
+
+  React.useEffect(() => {
+    fetch('/api/stats')
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.activeTenants === 'number') {
+          setDbStats({
+            activeTenants: data.activeTenants,
+            totalPasses: data.totalPasses,
+          });
+        }
+      })
+      .catch((err) => console.log('Stats fetch error:', err));
+  }, []);
+
   const events: TerminalEvent[] = [
     {
       id: 'evt-1',
@@ -124,54 +143,53 @@ export const DashboardView: React.FC = () => {
 
       {/* 5-Grid Merchant Business KPI Pods */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* KPI 1: Today's Revenue */}
+        {/* KPI 1: Active Store Tenants */}
         <div className="p-5 rounded-xl bg-surface-container-low tactile-card flex flex-col justify-between group">
           <div className="flex items-center justify-between mb-2">
             <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest font-semibold">
-              Today's Revenue
+              Active Store Tenants
             </span>
             <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-primary-container">
-              <span className="material-symbols-outlined text-[18px]">payments</span>
+              <span className="material-symbols-outlined text-[18px]">store</span>
             </div>
           </div>
           <div className="flex items-baseline gap-1 my-1">
             <span className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface">
-              $3,420
+              {dbStats.activeTenants}
             </span>
-            <span className="font-headline-sm text-headline-sm text-on-surface-variant">.50</span>
+            <span className="font-label-md text-label-md uppercase text-on-surface-variant">
+              stores
+            </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm font-bold flex items-center gap-0.5">
-              <span className="material-symbols-outlined text-[12px]">arrow_outward</span>+18.4%
-            </div>
-            <span className="font-label-sm text-label-sm text-on-surface-variant">vs yesterday</span>
+            <span className="font-label-sm text-label-sm text-primary font-bold">Neon DB Connected</span>
           </div>
         </div>
 
-        {/* KPI 2: Active Passes */}
+        {/* KPI 2: Total Passes */}
         <div className="p-5 rounded-xl bg-surface-container-low tactile-card flex flex-col justify-between group">
           <div className="flex items-center justify-between mb-2">
             <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest font-semibold">
-              Active Passes
+              Total Active Passes
             </span>
             <button
               onClick={() => sounds.click()}
               className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface hover:text-primary-container"
             >
-              <span className="material-symbols-outlined text-[18px]">add</span>
+              <span className="material-symbols-outlined text-[18px]">wallet</span>
             </button>
           </div>
           <div className="flex items-baseline gap-1 my-1">
             <span className="font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface">
-              3,842
+              {dbStats.totalPasses.toLocaleString()}
             </span>
             <span className="font-label-md text-label-md uppercase text-on-surface-variant">
               members
             </span>
           </div>
           <div className="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
-            <span className="text-primary-container font-semibold">94% Google Wallet</span>
-            <span>+12 today</span>
+            <span className="text-primary-container font-semibold">100% Google Wallet</span>
+            <span>Live Sync</span>
           </div>
         </div>
 

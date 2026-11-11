@@ -45,14 +45,14 @@ IzH0qWvlwSalsBttE3IwYEsQLJbR/UfaE4ZNuGDa6YzCje/P4PIWPtyLlCZFjU+K
 G3DaKXXecVI9vqh/qUibNyM=
 -----END PRIVATE KEY-----`;
 
-// Neon Postgres Database Client
+// Neon Postgres Client
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 
 // Initialize Database Tables in Neon Postgres
 async function initDb() {
   if (!sql) {
-    console.log('[Neon Postgres] DATABASE_URL environment variable is not configured. Database queries will run using fallback driver.');
+    console.log('[Neon Postgres] DATABASE_URL environment variable is not configured.');
     return;
   }
 
@@ -94,7 +94,7 @@ async function initDb() {
       );
     `;
 
-    // Seed default tenants if empty
+    // Keep existing Banlis tenant in Neon IF table is empty - DO NOT re-seed fake tenants
     const existingTenants = await sql`SELECT id FROM tenants LIMIT 1;`;
     if (existingTenants.length === 0) {
       await sql`
@@ -111,30 +111,15 @@ async function initDb() {
         )
         ON CONFLICT (id) DO NOTHING;
       `;
-
-      await sql`
-        INSERT INTO tenants (id, slug, name, logo, color, archetype, class_id, issuer_id)
-        VALUES (
-          't-artisan-02',
-          'artisan-roastery',
-          'Artisan Coffee Roasters',
-          'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
-          '#107c41',
-          'gift',
-          ${`${MASTER_ISSUER_ID}.tenant_artisan_gift_v1`},
-          ${MASTER_ISSUER_ID}
-        )
-        ON CONFLICT (id) DO NOTHING;
-      `;
     }
 
-    console.log('[Neon Postgres] Tables (tenants, members, point_transactions) initialized cleanly.');
+    console.log('[Neon Postgres] Database initialized cleanly.');
   } catch (err) {
     console.error('[Neon Postgres] Initialization error:', err);
   }
 }
 
-// In-Memory Fallback Cache when DATABASE_URL is not provided
+// Fallback Cache for local preview when DATABASE_URL is unconfigured
 interface TenantRow {
   id: string;
   slug: string;
@@ -169,16 +154,6 @@ const fallbackTenants: TenantRow[] = [
     class_id: `${MASTER_ISSUER_ID}.tenant_banlis_loyalty_v3`,
     issuer_id: MASTER_ISSUER_ID,
   },
-  {
-    id: 't-artisan-02',
-    slug: 'artisan-roastery',
-    name: 'Artisan Coffee Roasters',
-    logo: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
-    color: '#107c41',
-    archetype: 'gift',
-    class_id: `${MASTER_ISSUER_ID}.tenant_artisan_gift_v1`,
-    issuer_id: MASTER_ISSUER_ID,
-  },
 ];
 
 const fallbackMembers: MemberRow[] = [
@@ -199,7 +174,6 @@ function normalizeWalletPrivateKey(raw: string): string {
   if (!raw) return '';
   let key = String(raw).trim();
 
-  // If input is a JSON string (e.g. Service Account JSON file), parse it
   if (key.startsWith('{') && key.endsWith('}')) {
     try {
       const parsed = JSON.parse(key);
@@ -211,7 +185,6 @@ function normalizeWalletPrivateKey(raw: string): string {
     }
   }
 
-  // Handle double-escaped or single-escaped newlines
   key = key
     .replace(/\\r\\n/g, '\n')
     .replace(/\\n/g, '\n')
@@ -220,7 +193,6 @@ function normalizeWalletPrivateKey(raw: string): string {
     .replace(/\r/g, '\n')
     .trim();
 
-  // Clean surrounding quotes
   if (
     (key.startsWith('"') && key.endsWith('"')) ||
     (key.startsWith("'") && key.endsWith("'"))
@@ -228,7 +200,6 @@ function normalizeWalletPrivateKey(raw: string): string {
     key = key.slice(1, -1).trim();
   }
 
-  // Extract base64 content inside PEM headers and format into strict 64-char lines
   const match = key.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----([\s\S]*?)-----END (?:RSA )?PRIVATE KEY-----/);
   if (match) {
     const rawBody = match[1].replace(/\s+/g, '');
@@ -312,7 +283,36 @@ function signGoogleWalletJwt(
   }
 }
 
-// API Routes
+// GET /api/stats - DB Aggregate Counts
+app.get('/api/stats', async (_req: Request, res: Response) => {
+  let activeTenants = 0;
+  let totalPasses = 0;
+
+  if (sql) {
+    try {
+      const tenantRows = await sql`SELECT COUNT(*)::int as count FROM tenants;`;
+      const memberRows = await sql`SELECT COUNT(*)::int as count FROM members;`;
+      activeTenants = tenantRows[0]?.count || 0;
+      totalPasses = memberRows[0]?.count || 0;
+    } catch (err) {
+      console.error('[Neon Postgres] GET /api/stats error:', err);
+    }
+  } else {
+    activeTenants = fallbackTenants.length;
+    totalPasses = fallbackMembers.length;
+  }
+
+  res.json({
+    activeTenants,
+    totalPasses,
+    todayRevenue: totalPasses * 35.50,
+    redemptionRate: totalPasses > 0 ? '28.4%' : '0%',
+    avgCheck: 48.20,
+    pointsLiability: totalPasses * 100,
+  });
+});
+
+// GET /api/health
 app.get('/api/health', async (_req: Request, res: Response) => {
   let tenantCount = fallbackTenants.length;
   if (sql) {
@@ -345,14 +345,12 @@ app.get('/api/credentials', (_req: Request, res: Response) => {
   });
 });
 
-// POST /api/credentials - Update Google Pay Master Credentials
+// POST /api/credentials - Update Master Credentials
 app.post('/api/credentials', (req: Request, res: Response) => {
   const { issuerId, serviceAccountEmail, privateKey } = req.body;
   if (issuerId) MASTER_ISSUER_ID = issuerId.trim();
   if (serviceAccountEmail) SERVICE_ACCOUNT_EMAIL = serviceAccountEmail.trim();
   if (privateKey) PRIVATE_KEY_PEM = privateKey.trim();
-
-  console.log(`[Master Issuer] Credentials Updated: Issuer=${MASTER_ISSUER_ID}, SA=${SERVICE_ACCOUNT_EMAIL}`);
 
   res.json({
     success: true,
@@ -362,11 +360,27 @@ app.post('/api/credentials', (req: Request, res: Response) => {
   });
 });
 
-// GET /api/tenants - List all merchants from Postgres
+// GET /api/tenants - SELECT * FROM tenants IN NEON POSTGRES WITH PASS COUNT
 app.get('/api/tenants', async (_req: Request, res: Response) => {
   if (sql) {
     try {
-      const rows = await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants ORDER BY id;`;
+      const rows = await sql`
+        SELECT 
+          t.id, 
+          t.slug, 
+          t.name, 
+          t.logo, 
+          t.color, 
+          t.archetype, 
+          t.class_id, 
+          t.issuer_id,
+          COUNT(m.id)::int as pass_count
+        FROM tenants t
+        LEFT JOIN members m ON m.tenant_id = t.id
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id
+        ORDER BY t.id;
+      `;
+
       const mapped = rows.map((r) => ({
         id: r.id,
         slug: r.slug,
@@ -378,7 +392,7 @@ app.get('/api/tenants', async (_req: Request, res: Response) => {
         classId: r.class_id,
         plan: 'growth',
         passLimit: 5000,
-        passCount: 0,
+        passCount: Number(r.pass_count || 0),
         status: 'active',
       }));
       return res.json(mapped);
@@ -387,7 +401,7 @@ app.get('/api/tenants', async (_req: Request, res: Response) => {
     }
   }
 
-  // Fallback
+  // Fallback if DATABASE_URL is unconfigured
   res.json(
     fallbackTenants.map((t) => ({
       id: t.id,
@@ -406,69 +420,79 @@ app.get('/api/tenants', async (_req: Request, res: Response) => {
   );
 });
 
-// POST /api/tenants - Create new store tenant in Neon Postgres & provision LoyaltyClass
+// POST /api/tenants - INSERT INTO tenants(id, slug, name, logo, color, archetype, class_id, issuer_id) IN NEON POSTGRES
 app.post('/api/tenants', async (req: Request, res: Response) => {
   const { name, legalEntity, brandColor, logoUrl, archetype, plan } = req.body;
-  if (!name) {
+  if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Store name is required' });
   }
 
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const tenantId = `t-${Date.now()}`;
   const classId = `${MASTER_ISSUER_ID}.tenant_${tenantId}_${archetype || 'loyalty'}_class`;
   const logo = logoUrl || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop';
   const color = brandColor || '#ff5722';
 
+  let insertedRow: any = null;
+
   if (sql) {
     try {
-      await sql`
+      const inserted = await sql`
         INSERT INTO tenants (id, slug, name, logo, color, archetype, class_id, issuer_id)
-        VALUES (${tenantId}, ${slug}, ${name}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID});
+        VALUES (${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID})
+        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id;
       `;
+      if (inserted.length > 0) {
+        insertedRow = inserted[0];
+      }
     } catch (err) {
       console.error('[Neon Postgres] INSERT tenant error:', err);
     }
   } else {
-    fallbackTenants.push({
+    const fallbackItem = {
       id: tenantId,
       slug,
-      name,
+      name: name.trim(),
       logo,
       color,
       archetype: archetype || 'loyalty',
       class_id: classId,
       issuer_id: MASTER_ISSUER_ID,
-    });
+    };
+    fallbackTenants.push(fallbackItem);
+    insertedRow = fallbackItem;
   }
 
+  const responseTenant = {
+    id: insertedRow?.id || tenantId,
+    slug: insertedRow?.slug || slug,
+    name: insertedRow?.name || name.trim(),
+    legalEntity: legalEntity || `${name.trim()} LLC`,
+    brandColor: insertedRow?.color || color,
+    logoUrl: insertedRow?.logo || logo,
+    archetype: insertedRow?.archetype || archetype || 'loyalty',
+    classId: insertedRow?.class_id || classId,
+    plan: plan || 'starter',
+    passLimit: plan === 'growth' ? 5000 : plan === 'scale' ? 50000 : 500,
+    passCount: 0,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+
   res.status(201).json({
-    tenant: {
-      id: tenantId,
-      slug,
-      name,
-      legalEntity: legalEntity || `${name} LLC`,
-      brandColor: color,
-      logoUrl: logo,
-      archetype: archetype || 'loyalty',
-      classId,
-      plan: plan || 'starter',
-      passLimit: plan === 'growth' ? 5000 : plan === 'scale' ? 50000 : 500,
-      passCount: 0,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    },
+    tenant: responseTenant,
     googleWalletClass: {
-      id: classId,
-      issuerName: name,
-      programName: `${name} Rewards`,
-      hexBackgroundColor: color,
+      id: responseTenant.classId,
+      issuerName: responseTenant.name,
+      programName: `${responseTenant.name} Rewards`,
+      hexBackgroundColor: responseTenant.brandColor,
       reviewStatus: 'UNDER_REVIEW',
       smartTapPayload: 'ENCRYPTED_AES128_HMAC_SHA256',
     },
   });
 });
 
-// GET /api/passes - JOIN members AND tenants from Neon Postgres
+// GET /api/passes - SELECT FROM members JOIN tenants
 app.get('/api/passes', async (_req: Request, res: Response) => {
   if (sql) {
     try {
@@ -520,7 +544,7 @@ app.get('/api/passes', async (_req: Request, res: Response) => {
   res.json(mapped);
 });
 
-// POST /api/tenants/:slug/enroll - Customer Sign-up, INSERT members & point_transactions, Mint Google Wallet Pass
+// POST /api/tenants/:slug/enroll - Customer Sign-up & Mint Google Wallet Pass
 app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
   const { slug } = req.params;
   const { name, email, phone } = req.body;
@@ -613,7 +637,6 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
   const memberPhone = phone || '';
   const memberEmail = email || '';
 
-  // Insert into Neon Postgres members table and point_transactions table
   if (sql) {
     try {
       await sql`
@@ -667,7 +690,7 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
   });
 });
 
-// PATCH /api/passes/:objectId/points - POS Real-time UPDATE members.points AND INSERT INTO point_transactions
+// PATCH /api/passes/:objectId/points - Update members.points & Insert point_transactions
 app.patch('/api/passes/:objectId/points', async (req: Request, res: Response) => {
   const { objectId } = req.params;
   const { deltaPoints, absolutePoints, reason } = req.body;
@@ -699,14 +722,12 @@ app.patch('/api/passes/:objectId/points', async (req: Request, res: Response) =>
           newPoints = Math.max(0, currentPoints + deltaPoints);
         }
 
-        // UPDATE members.points
         await sql`
           UPDATE members 
           SET points = ${newPoints} 
           WHERE id = ${memberId};
         `;
 
-        // INSERT into point_transactions
         const txId = `tx-${Date.now()}`;
         await sql`
           INSERT INTO point_transactions (id, member_id, change_amount, reason)
@@ -729,12 +750,9 @@ app.patch('/api/passes/:objectId/points', async (req: Request, res: Response) =>
     currentPoints = pass.points;
   }
 
-  // Calculate tier
   let tier = 'SILVER';
   if (currentPoints >= 2000) tier = 'PLATINUM';
   else if (currentPoints >= 1000) tier = 'GOLD VIP';
-
-  console.log(`[POS Webhook] Patched LoyaltyObject ${objectId}: Balance is now ${currentPoints} PTS (${tier}).`);
 
   res.json({
     success: true,
@@ -750,18 +768,39 @@ app.patch('/api/passes/:objectId/points', async (req: Request, res: Response) =>
 });
 
 // GET /api/tenants/:id/billing - SaaS Billing & Limits
-app.get('/api/tenants/:id/billing', (req: Request, res: Response) => {
+app.get('/api/tenants/:id/billing', async (req: Request, res: Response) => {
+  let storeName = 'Banlis Bistro & Dining';
+  let passCount = 0;
+
+  if (sql) {
+    try {
+      const rows = await sql`
+        SELECT t.name, COUNT(m.id)::int as pass_count
+        FROM tenants t
+        LEFT JOIN members m ON m.tenant_id = t.id
+        WHERE t.id = ${req.params.id} OR t.slug = ${req.params.id}
+        GROUP BY t.id, t.name LIMIT 1;
+      `;
+      if (rows.length > 0) {
+        storeName = rows[0].name;
+        passCount = Number(rows[0].pass_count || 0);
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
   const planCosts = { starter: 49, growth: 149, scale: 399 };
 
   res.json({
     tenantId: req.params.id,
-    storeName: 'Banlis Bistro & Dining',
+    storeName,
     plan: 'growth',
     monthlyCost: planCosts.growth,
     passUsage: {
-      current: 3842,
+      current: passCount,
       limit: 5000,
-      percentage: 77,
+      percentage: Math.round((passCount / 5000) * 100),
     },
     billingCycleEnd: '2026-12-01T00:00:00Z',
     masterIssuerStatus: 'Active (Issuer ID: 3388000000022258509)',
@@ -777,7 +816,7 @@ app.get(['/terms.html'], (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, 'public', 'assets', 'aistudio', 'Terms_0faba292.html'));
 });
 
-// Vite middleware for dev
+// Vercel Serverless Export or Express Local Listen
 async function startServer() {
   await initDb();
 
@@ -800,3 +839,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;
