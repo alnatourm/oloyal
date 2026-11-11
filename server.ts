@@ -218,10 +218,27 @@ function signGoogleWalletJwt(
 ): string {
   const defaultOrigins = [
     'https://oloyal.vercel.app',
+    'https://oloyal-three.vercel.app',
+    'http://localhost:5173',
     'https://banlis-wallet.vercel.app',
     'https://ais-dev-v6nnfts2ifjcwfsonsfq2o-86957709213.us-west1.run.app',
     'https://ais-pre-v6nnfts2ifjcwfsonsfq2o-86957709213.us-west1.run.app',
   ];
+
+  if (process.env.ORIGINS) {
+    try {
+      const trimmed = process.env.ORIGINS.trim();
+      if (trimmed.startsWith('[')) {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) defaultOrigins.push(...parsed);
+      } else {
+        const split = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+        defaultOrigins.push(...split);
+      }
+    } catch {
+      defaultOrigins.push(process.env.ORIGINS);
+    }
+  }
 
   if (process.env.GOOGLE_WALLET_ORIGIN) defaultOrigins.push(process.env.GOOGLE_WALLET_ORIGIN);
   if (process.env.APP_URL) defaultOrigins.push(process.env.APP_URL);
@@ -231,7 +248,7 @@ function signGoogleWalletJwt(
   [...defaultOrigins, ...extraOrigins].forEach((orig) => {
     if (!orig) return;
     try {
-      const u = new URL(orig.startsWith('http') ? orig : `https://${orig}`);
+      const u = new URL(orig.startsWith('http://') || orig.startsWith('https://') ? orig : `https://${orig}`);
       originsSet.add(u.origin);
     } catch {
       // Ignore invalid URL
@@ -239,6 +256,7 @@ function signGoogleWalletJwt(
   });
 
   const originsList = Array.from(originsSet);
+  console.log('[Google Wallet] Signed JWT with origins:', originsList);
 
   const header = { alg: 'RS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
