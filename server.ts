@@ -95,6 +95,7 @@ function signGoogleWalletJwt(
   extraOrigins: string[] = []
 ): string {
   const defaultOrigins = [
+    'https://oloyal.vercel.app',
     'https://banlis-wallet.vercel.app',
     'https://ais-dev-v6nnfts2ifjcwfsonsfq2o-86957709213.us-west1.run.app',
     'https://ais-pre-v6nnfts2ifjcwfsonsfq2o-86957709213.us-west1.run.app',
@@ -508,6 +509,15 @@ app.get('/api/tenants/:id/billing', (req: Request, res: Response) => {
     billingCycleEnd: '2026-12-01T00:00:00Z',
     masterIssuerStatus: 'Active (Issuer ID: 3388000000022258509)',
   });
+});
+
+// Direct HTML legal endpoints for Google Pay Console automated crawlers
+app.get(['/privacy.html'], (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, 'public', 'assets', 'aistudio', 'Privacy_1be6727a.html'));
+});
+
+app.get(['/terms.html'], (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, 'public', 'assets', 'aistudio', 'Terms_0faba292.html'));
 });
 
 // Vite middleware for dev

@@ -10,6 +10,8 @@ import { OnboardingView } from './views/OnboardingView';
 import { SaaSBillingView } from './views/SaaSBillingView';
 import { CustomerEnrollmentView } from './views/CustomerEnrollmentView';
 import { SuperAdminView } from './views/SuperAdminView';
+import { PrivacyPolicyView } from './views/PrivacyPolicyView';
+import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
 
 export default function App() {
@@ -77,6 +79,10 @@ export default function App() {
 
         {currentPath === 'super-admin' && <SuperAdminView />}
 
+        {currentPath === 'privacy' && <PrivacyPolicyView />}
+
+        {currentPath === 'terms' && <TermsOfServiceView />}
+
         {(currentPath === 'onboarding' || currentPath === 'telemetry-hardware') && (
           <OnboardingView
             onCompleteStep={() => {
@@ -110,6 +116,40 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Legal & Compliance Footer Bar */}
+        <footer className="mt-16 pt-8 border-t border-surface-container-highest/60 flex flex-wrap items-center justify-between gap-4 text-outline font-label-sm text-label-sm">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#ff5722] text-[18px]">verified_user</span>
+            <span className="font-bold text-on-surface">PassLoyal OS</span>
+            <span>© 2026 PassLoyal OS • Google Wallet API Verified Issuer</span>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => setCurrentPath('privacy')}
+              className={`font-semibold transition-colors hover:text-[#ff5722] ${
+                currentPath === 'privacy' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
+              }`}
+            >
+              Privacy Policy
+            </button>
+            <button
+              onClick={() => setCurrentPath('terms')}
+              className={`font-semibold transition-colors hover:text-[#ff5722] ${
+                currentPath === 'terms' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
+              }`}
+            >
+              Terms of Service
+            </button>
+            <a
+              href="mailto:alnatour.m@gmail.com"
+              className="text-on-surface-variant hover:text-[#ff5722] font-semibold"
+            >
+              Contact Support
+            </a>
+          </div>
+        </footer>
       </main>
 
       {/* Optical Scanner Modal */}

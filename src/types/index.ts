@@ -9,7 +9,9 @@ export type NavigationPath =
   | 'super-admin'
   | 'telemetry-hardware' 
   | 'reports' 
-  | 'settings';
+  | 'settings'
+  | 'privacy'
+  | 'terms';
 
 export type ArchetypeKey = 'loyalty' | 'gift' | 'ticket';
 
