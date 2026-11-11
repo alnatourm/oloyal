@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface-dim: #d8dadd;
+  --color-inverse-primary: #ffb5a0;
+  --color-primary-container: #ff5722;
+  --color-outline-variant: #e4beb4;
+  --color-on-secondary-fixed: #3a0a00;
+  --color-secondary-fixed: #ffdbd0;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-highest: #e0e3e6;
+  --color-primary-fixed-dim: #ffb5a0;
+  --color-surface-container-high: #e6e8eb;
+  --color-on-primary: #ffffff;
+  --color-on-surface: #191c1e;
+  --color-on-secondary-container: #631800;
+  --color-on-tertiary-fixed: #001e2e;
+  --color-on-secondary: #ffffff;
+  --color-on-primary-fixed-variant: #862200;
+  --color-surface-variant: #e0e3e6;
+  --color-secondary: #ac3509;
+  --color-tertiary-fixed: #c8e6ff;
+  --color-on-error-container: #93000a;
+  --color-secondary-fixed-dim: #ffb59f;
+  --color-on-primary-fixed: #3b0900;
+  --color-on-tertiary-fixed-variant: #004c6d;
+  --color-on-tertiary: #ffffff;
+  --color-on-background: #191c1e;
+  --color-on-secondary-fixed-variant: #852300;
+  --color-surface: #f7f9fc;
+  --color-tertiary: #00628c;
+  --color-primary: #b02f00;
+  --color-on-tertiary-container: #fcfcff;
+  --color-surface-container: #eceef1;
+  --color-tertiary-fixed-dim: #86cfff;
+  --color-error: #ba1a1a;
+  --color-surface-bright: #f7f9fc;
+  --color-secondary-container: #fe6f42;
+  --color-surface-tint: #b02f00;
+  --color-on-primary-container: #541200;
+  --color-primary-fixed: #ffdbd1;
+  --color-on-surface-variant: #5b4039;
+  --color-surface-container-low: #f2f4f7;
+  --color-tertiary-container: #007caf;
+  --color-outline: #907067;
+  --color-inverse-on-surface: #eff1f4;
+  --color-error-container: #ffdad6;
+  --color-background: #f7f9fc;
+  --color-inverse-surface: #2d3133;
+  --color-on-error: #ffffff;
+
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 1rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-xl: 2.5rem;
+  --spacing-space-2xl: 4rem;
+  --spacing-gutter: 1.5rem;
+  --spacing-margin: 2.5rem;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: #f7f9fc;
+    color: #191c1e;
+    overscroll-behavior: none;
+  }
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tactile 3D Neumorphic Shadows & Ceramic Depth Utilities */
+.tactile-convex {
+  box-shadow: -8px -8px 16px #ffffff, 8px 8px 16px #d1d9e6;
+}
+
+.tactile-convex-sm {
+  box-shadow: -4px -4px 10px #ffffff, 4px 4px 10px #d1d9e6;
+}
+
+.tactile-deboss {
+  box-shadow: inset 4px 4px 8px #d1d9e6, inset -4px -4px 8px #ffffff;
+}
+
+.tactile-active-glow {
+  box-shadow: 0 0 16px rgba(255, 87, 34, 0.45);
+}
+
+.tactile-card {
+  box-shadow: -8px -8px 20px #ffffff, 8px 8px 20px #d8dadd;
+}
+
+.tactile-btn {
+  box-shadow: -4px -4px 10px #ffffff, 4px 4px 10px #d8dadd;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tactile-btn:hover {
+  box-shadow: -2px -2px 6px #ffffff, 2px 2px 6px #d8dadd;
+}
+
+.tactile-btn:active {
+  box-shadow: inset 3px 3px 6px #d8dadd, inset -3px -3px 6px #ffffff;
+  transform: translateY(1px);
+}
+
+.tactile-glow {
+  box-shadow: 0 0 20px rgba(255, 87, 34, 0.35);
+}
+
+/* Material Symbols sizing helper */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.material-symbols-outlined.filled {
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Custom smooth rotary transitions */
+.dial-transition {
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+

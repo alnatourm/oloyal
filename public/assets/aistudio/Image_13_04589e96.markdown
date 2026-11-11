@@ -1,0 +1,235 @@
+---
+name: Porcelain Tactile
+colors:
+  surface: '#f7f9fc'
+  surface-dim: '#d8dadd'
+  surface-bright: '#f7f9fc'
+  surface-container-lowest: '#ffffff'
+  surface-container-low: '#f2f4f7'
+  surface-container: '#eceef1'
+  surface-container-high: '#e6e8eb'
+  surface-container-highest: '#e0e3e6'
+  on-surface: '#191c1e'
+  on-surface-variant: '#5b4039'
+  inverse-surface: '#2d3133'
+  inverse-on-surface: '#eff1f4'
+  outline: '#907067'
+  outline-variant: '#e4beb4'
+  surface-tint: '#b02f00'
+  primary: '#b02f00'
+  on-primary: '#ffffff'
+  primary-container: '#ff5722'
+  on-primary-container: '#541200'
+  inverse-primary: '#ffb5a0'
+  secondary: '#ac3509'
+  on-secondary: '#ffffff'
+  secondary-container: '#fe6f42'
+  on-secondary-container: '#631800'
+  tertiary: '#00628c'
+  on-tertiary: '#ffffff'
+  tertiary-container: '#007caf'
+  on-tertiary-container: '#fcfcff'
+  error: '#ba1a1a'
+  on-error: '#ffffff'
+  error-container: '#ffdad6'
+  on-error-container: '#93000a'
+  primary-fixed: '#ffdbd1'
+  primary-fixed-dim: '#ffb5a0'
+  on-primary-fixed: '#3b0900'
+  on-primary-fixed-variant: '#862200'
+  secondary-fixed: '#ffdbd0'
+  secondary-fixed-dim: '#ffb59f'
+  on-secondary-fixed: '#3a0a00'
+  on-secondary-fixed-variant: '#852300'
+  tertiary-fixed: '#c8e6ff'
+  tertiary-fixed-dim: '#86cfff'
+  on-tertiary-fixed: '#001e2e'
+  on-tertiary-fixed-variant: '#004c6d'
+  background: '#f7f9fc'
+  on-background: '#191c1e'
+  surface-variant: '#e0e3e6'
+typography:
+  display-xl:
+    fontFamily: Inter
+    fontSize: 56px
+    fontWeight: '300'
+    lineHeight: 64px
+    letterSpacing: -0.03em
+  display-xl-mobile:
+    fontFamily: Inter
+    fontSize: 36px
+    fontWeight: '300'
+    lineHeight: 44px
+    letterSpacing: -0.02em
+  headline-lg:
+    fontFamily: Inter
+    fontSize: 32px
+    fontWeight: '500'
+    lineHeight: 40px
+    letterSpacing: -0.02em
+  headline-lg-mobile:
+    fontFamily: Inter
+    fontSize: 24px
+    fontWeight: '500'
+    lineHeight: 32px
+    letterSpacing: -0.01em
+  headline-md:
+    fontFamily: Inter
+    fontSize: 20px
+    fontWeight: '600'
+    lineHeight: 28px
+    letterSpacing: -0.01em
+  headline-sm:
+    fontFamily: Inter
+    fontSize: 16px
+    fontWeight: '600'
+    lineHeight: 24px
+    letterSpacing: 0em
+  body-lg:
+    fontFamily: Inter
+    fontSize: 16px
+    fontWeight: '400'
+    lineHeight: 24px
+    letterSpacing: 0em
+  body-md:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: '400'
+    lineHeight: 20px
+    letterSpacing: 0em
+  body-sm:
+    fontFamily: Inter
+    fontSize: 12px
+    fontWeight: '400'
+    lineHeight: 16px
+    letterSpacing: 0.01em
+  label-lg:
+    fontFamily: Inter
+    fontSize: 13px
+    fontWeight: '600'
+    lineHeight: 18px
+    letterSpacing: 0.04em
+  label-md:
+    fontFamily: Inter
+    fontSize: 11px
+    fontWeight: '600'
+    lineHeight: 16px
+    letterSpacing: 0.06em
+  label-sm:
+    fontFamily: Inter
+    fontSize: 10px
+    fontWeight: '700'
+    lineHeight: 14px
+    letterSpacing: 0.08em
+rounded:
+  sm: 0.5rem
+  DEFAULT: 1rem
+  md: 1.5rem
+  lg: 2rem
+  xl: 3rem
+  full: 9999px
+spacing:
+  gutter: 1.5rem
+  gutter-mobile: 1rem
+  margin: 2.5rem
+  margin-mobile: 1.25rem
+  space-xs: 0.25rem
+  space-sm: 0.5rem
+  space-md: 1rem
+  space-lg: 1.5rem
+  space-xl: 2.5rem
+  space-2xl: 4rem
+---
+
+## Brand & Style
+
+This design system embodies a serene, ultra-modern luxury environment inspired by futuristic architectural automation and high-end physical interfaces. The aesthetic bridges digital fluidity with the tactile weight of precision-molded porcelain and warm internal illumination.
+
+### Personality & Tone
+- **Sculpted & Tactile:** Elements appear seamlessly molded from a single continuous substrate rather than layered onto flat canvas planes.
+- **Architectural & Calm:** Soft, low-contrast gradients evoke warm interior daylight bouncing off matte white ceramic, eliminating digital harshness.
+- **Precision Engineered:** High-contrast warm orange gauges cut through ethereal porcelain surfaces, delivering surgical clarity and immediate system feedback.
+
+### Visual Style
+A refined fusion of soft neumorphism and modern industrial design. Surfaces rely on dual-axis lighting (top-left light sources casting soft ambient glows counterbalanced by gentle bottom-right umbra shadows) to establish extruded convex volumes and debossed concave receptacles. Micro-interactions reward interaction with realistic mechanical depression and responsive inner lighting.
+
+## Colors
+
+The palette is anchored by pristine ceramic neutrals paired with radiant warm orange illumination.
+
+### Functional Roles
+- **Primary (`#FF5722`):** Reserved strictly for active dial tracks, focal switches, energized gauges, and stateful highlights. It serves as visual heat against cool porcelain.
+- **Secondary (`#FF7043`):** Utilized for secondary dial arcs, gradient transitions, warm glowing backdrops, and active hover states.
+- **Porcelain Canvas (`#F0F2F5`):** The master substrate color from which all controls and embossed elements emerge.
+- **Shadow Dark Tint (`#D1D9E6`):** The ambient shadow shade responsible for external drop shadows and inner recess bevels.
+- **Highlight White (`#FFFFFF`):** Pure light reflection used on top-left edges to create three-dimensional curvature.
+- **Text & Glyphs:** High-contrast charcoal (`#1E2229`) for numerical values, balanced with muted slate (`#788292`) for descriptive metadata and sub-labels.
+
+## Typography
+
+Typography prioritizes structural clarity and mechanical precision through Inter.
+
+### Hierarchy & Style Rules
+- **Numerical Dominance:** Large metrics (e.g., temperatures, track counters) use light weight (`300`) at expansive scales (`display-xl`) with negative tracking, creating a clinical, high-end appliance readout.
+- **Section Headers:** Rendered in uppercase with generous letter spacing (`0.06em` to `0.08em`) in `label-md` or `label-sm` to denote quiet technical control.
+- **Body & Data Readouts:** Medium and regular weights ensure legible telemetry under soft lighting conditions without overpowering tactile surface geometry.
+
+## Layout & Spacing
+
+The layout model mimics precision instrument dashboards with radial and orbital focal centers rather than rigid vertical text columns.
+
+### Grid & Composition
+- **Desktop (1024px+):** Fluid asymmetric cockpit layout with a primary focal dial anchored centrally or in the primary third, flanked by modular secondary panels.
+- **Tablet (768px - 1023px):** Two-column split-panel layout maintaining tactile visual breathing room.
+- **Mobile (<768px):** Single-column stacked configuration where rotary controls scale to a compact horizontal dimension without losing finger-accessible touch targets (minimum 48px).
+
+### Spacing Philosophy
+Ample outer margins (`margin`: `2.5rem`) and structural element separation (`space-xl` and `space-2xl`) are mandatory to let soft convex/concave shadows feather naturally without overlapping artifacts.
+
+## Elevation & Depth
+
+Depth is engineered through light simulation rather than high-contrast structural borders or flat color blocking. The simulated light originates from the top-left at a 135-degree angle.
+
+### Tactile States
+1. **Convex Extrusion (Floating Buttons, Cards):**
+   - Shadow Pair: Top-left `-8px -8px 16px #FFFFFF`, Bottom-right `8px 8px 16px #D1D9E6`.
+   - Result: Surface gently rises outward toward the user.
+
+2. **Concave Deboss (Input Wells, Recessed Tracks, Inactive Slots):**
+   - Inner Shadow Pair: Top-left `inset 6px 6px 12px #D1D9E6`, Bottom-right `inset -6px -6px 12px #FFFFFF`.
+   - Result: Surface is carved inward into the ceramic baseplate.
+
+3. **Active Illumination Glow:**
+   - Active state elements add a warm orange aura (`0 0 20px rgba(255, 87, 34, 0.35)`), simulating embedded LED luminescence through translucent resin.
+
+## Shapes
+
+Shapes adhere strictly to organic pill capsules, circular dials, and generous soft rectangular radiuses that evoke vacuum-molded ceramic casings.
+
+### Geometry Guidelines
+- **Primary Radiuses:** Major control modules utilize smooth, large-radius rounding (`rounded-lg` at `2rem`, `rounded-xl` at `3rem`).
+- **Interactive Controls:** All standalone buttons, state chips, and status switches are fully pill-shaped (`rounded-full` or level `3`).
+- **Circular Dials:** Rotary dials, gauges, and radial controllers are locked to a strict 1:1 circular aspect ratio with circular inner rings.
+
+## Components
+
+### Buttons
+- **Convex Pill Button:** Sculpted ceramic button. Default state has dual exterior shadows (`-4px -4px 10px #FFFFFF`, `4px 4px 10px #D1D9E6`). 
+- **Pressed State:** Transitions instantly into a debossed inner shadow (`inset 3px 3px 6px #D1D9E6`, `inset -3px -3px 6px #FFFFFF`).
+- **Action Highlight Variant:** Filled with `#FF5722`, white iconography, and a soft orange outer glow.
+
+### Radial Track Gauges & Rotary Dials
+- Concentric multi-tier circular wells. Outer rim features debossed circular tracks with `#FF5722` arc fills indicating current magnitude.
+- Center knob features a convex extruded wheel with a central notch indicator and real-time numeric readouts rendered in `display-xl`.
+
+### Chips & Segmented Controls
+- Contained within a debossed pill track. The active selection pops upward into a convex white pill with a glowing `#FF5722` icon or label.
+
+### Lists & Grouped Sensors
+- Rather than dividing rules, items are housed within shallow indented grooves or sit as individual extruded cards separated by `space-sm`.
+
+### Input Fields & Search Bars
+- Recessed deep wells with dual inner shadows. Text input rests within the recess in neutral charcoal, accompanied by glowing orange focus indicators along the inner border.
+
+### Cards & Panels
+- Expansive porcelain plates featuring large curved corners (`rounded-xl`), soft dual shadows, and internal concave regions that group sub-controls intuitively.

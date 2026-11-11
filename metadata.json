@@ -1,0 +1,6 @@
+{
+  "name": "PassLoyal OS - Tactile 3D Loyalty & Wallet Engine",
+  "description": "Ultra-modern tactile 3D porcelain system for Google Wallet pass design, POS cashiering, member CRM, and merchant onboarding.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
