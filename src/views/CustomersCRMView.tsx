@@ -46,7 +46,25 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
-  const selectedMember = members.find((m) => m.id === selectedMemberId) || members[0];
+  const defaultMember: CustomerMember = {
+    id: 'demo-0',
+    uid: '#PL-000000',
+    name: 'No Enrolled Member',
+    avatarUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
+    tier: 'SILVER',
+    tierColor: 'text-on-surface',
+    tierBg: 'bg-surface-container-high text-on-surface-variant',
+    points: 0,
+    tierCap: 2000,
+    entryPoints: 0,
+    thresholdPoints: 1000,
+    status: 'NFC Ready Node',
+    joinedDate: '2026',
+    syncedTime: 'Just now',
+    visitCount: 0,
+  };
+
+  const selectedMember = members.find((m) => m.id === selectedMemberId) || members[0] || defaultMember;
 
   const handleSelectMember = (id: string) => {
     sounds.click();
@@ -57,7 +75,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
     sounds.dialTick();
     setMembers((prev) =>
       prev.map((m) => {
-        if (m.id === selectedMemberId) {
+        if (m.id === selectedMember.id) {
           const newPts = Math.max(0, m.points + delta);
           return { ...m, points: newPts };
         }
@@ -83,9 +101,12 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
     return true;
   });
 
+  const entryPts = selectedMember.entryPoints || 0;
+  const threshPts = selectedMember.thresholdPoints || 1000;
+  const denom = Math.max(1, threshPts - entryPts);
   const progressPct = Math.min(
     100,
-    Math.round(((selectedMember.points - selectedMember.entryPoints) / (selectedMember.thresholdPoints - selectedMember.entryPoints)) * 100)
+    Math.max(0, Math.round(((selectedMember.points - entryPts) / denom) * 100))
   );
 
   return (
