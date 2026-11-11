@@ -27,7 +27,12 @@ function normalizeWalletPrivateKey(raw: string): string {
     key = key.slice(1, -1);
   }
 
-  key = key.replace(/\\r?\\n/g, '\n');
+  key = key
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
 
   // Accept a complete PKCS#8 PEM only. Do not strip or rewrite key material.
   if (
