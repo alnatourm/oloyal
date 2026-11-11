@@ -21,7 +21,11 @@ export interface TenantStore {
   baseEarnRate?: number;
 }
 
-export const SuperAdminView: React.FC = () => {
+interface SuperAdminViewProps {
+  onSelectTenantDashboard?: (slug: string) => void;
+}
+
+export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDashboard }) => {
   const [tenants, setTenants] = useState<TenantStore[]>([]);
 
   // Filtering & Search
@@ -45,6 +49,7 @@ export const SuperAdminView: React.FC = () => {
   const [newLegalEntity, setNewLegalEntity] = useState('');
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('admin123');
   const [newBrandColor, setNewBrandColor] = useState('#ff5722');
   const [newLogoUrl, setNewLogoUrl] = useState('');
   const [newArchetype, setNewArchetype] = useState<'loyalty' | 'gift' | 'ticket' | 'benefit'>('loyalty');
@@ -117,6 +122,9 @@ export const SuperAdminView: React.FC = () => {
         body: JSON.stringify({
           name: newStoreName.trim(),
           legalEntity: newLegalEntity.trim() || `${newStoreName.trim()} LLC`,
+          ownerName: newOwnerName.trim() || 'Store Manager',
+          ownerEmail: newOwnerEmail.trim() || undefined,
+          password: newPassword.trim() || 'admin123',
           brandColor: newBrandColor,
           logoUrl: newLogoUrl.trim() || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
           archetype: newArchetype,
@@ -143,6 +151,7 @@ export const SuperAdminView: React.FC = () => {
       setNewLegalEntity('');
       setNewOwnerName('');
       setNewOwnerEmail('');
+      setNewPassword('admin123');
       setNewBrandColor('#ff5722');
       setNewLogoUrl('');
       setNewArchetype('loyalty');
@@ -514,17 +523,23 @@ export const SuperAdminView: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            sounds.click(1000, 0.02);
-                            setManagingTenant(t);
-                            setManageTab('overview');
-                          }}
-                          className="px-4 py-1.5 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-bold tactile-btn hover:text-[#ff5722] hover:border-[#ff5722]/30 flex items-center gap-1.5 ml-auto"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">tune</span>
-                          <span>Manage</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              sounds.click(1000, 0.02);
+                              if (onSelectTenantDashboard) {
+                                onSelectTenantDashboard(t.slug);
+                              } else {
+                                setManagingTenant(t);
+                                setManageTab('overview');
+                              }
+                            }}
+                            className="px-4 py-1.5 rounded-full bg-[#ff5722] text-white font-label-sm text-label-sm font-bold tactile-glow flex items-center gap-1.5 ml-auto hover:brightness-105 active:scale-95"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">dashboard</span>
+                            <span>Manage</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -593,11 +608,11 @@ export const SuperAdminView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Owner Contact */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Owner Contact & Authentication */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block font-label-md text-label-md font-bold text-on-surface mb-1.5">
-                    Owner / Contact Name
+                    Owner Name
                   </label>
                   <input
                     type="text"
@@ -609,13 +624,25 @@ export const SuperAdminView: React.FC = () => {
                 </div>
                 <div>
                   <label className="block font-label-md text-label-md font-bold text-on-surface mb-1.5">
-                    Contact Email Address
+                    Owner Login Email
                   </label>
                   <input
                     type="email"
                     value={newOwnerEmail}
                     onChange={(e) => setNewOwnerEmail(e.target.value)}
                     placeholder="e.g. marco@mammamia.com"
+                    className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface font-body-sm focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
+                  />
+                </div>
+                <div>
+                  <label className="block font-label-md text-label-md font-bold text-on-surface mb-1.5">
+                    Initial Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="admin123"
                     className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface font-body-sm focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
                   />
                 </div>

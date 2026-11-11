@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavigationPath } from './types';
 import { Navigation } from './components/Navigation';
 import { Header } from './components/Header';
@@ -15,12 +15,39 @@ import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
 
 export default function App() {
-  const [currentPath, setCurrentPath] = useState<NavigationPath>('pass-studio');
+  const [currentPath, setCurrentPath] = useState<NavigationPath>('dashboard');
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Multi-Tenant Context State
+  const [activeTenantSlug, setActiveTenantSlug] = useState<string>('banlis');
+  const [tenants, setTenants] = useState<Array<{ id: string; slug: string; name: string; logoUrl?: string; brandColor?: string }>>([]);
+
+  const fetchTenants = () => {
+    fetch('/api/tenants')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setTenants(data);
+          if (data.length > 0 && (!activeTenantSlug || activeTenantSlug === 'banlis')) {
+            setActiveTenantSlug(data[0].slug || 'banlis');
+          }
+        }
+      })
+      .catch((err) => console.error('Error fetching tenants list:', err));
+  };
+
+  useEffect(() => {
+    fetchTenants();
+  }, []);
+
   const handleNavigate = (path: NavigationPath) => {
     setCurrentPath(path);
+  };
+
+  const handleSelectTenant = (slug: string) => {
+    setActiveTenantSlug(slug);
+    setCurrentPath('dashboard');
   };
 
   const openScanner = () => {
@@ -28,7 +55,7 @@ export default function App() {
   };
 
   const handleScanSuccess = () => {
-    setToastMessage('Optical Pass Scan Confirmed: Marcus Vance (Gold VIP) perks applied!');
+    setToastMessage('Optical Pass Scan Confirmed: Member perks applied!');
     setCurrentPath('pos-cashier');
     setTimeout(() => setToastMessage(null), 3500);
   };
@@ -42,15 +69,18 @@ export default function App() {
         openScannerModal={openScanner}
       />
 
-      {/* Top Header Bar */}
+      {/* Top Header Bar with Tenant Switcher */}
       <Header
         openScannerModal={openScanner}
         onQuickNotice={() => setToastMessage('System Update: Smart Tap v3.2 Cryptographic Session Active.')}
+        activeTenantSlug={activeTenantSlug}
+        tenants={tenants}
+        onSelectTenant={handleSelectTenant}
       />
 
       {/* Main View Container */}
       <main className="pl-28 lg:pl-32 pr-6 pt-24 max-w-[1600px] mx-auto transition-all">
-        {currentPath === 'dashboard' && <DashboardView />}
+        {currentPath === 'dashboard' && <DashboardView activeSlug={activeTenantSlug} />}
         
         {currentPath === 'pass-studio' && (
           <PassStudioView
@@ -77,7 +107,14 @@ export default function App() {
 
         {currentPath === 'billing' && <SaaSBillingView />}
 
-        {currentPath === 'super-admin' && <SuperAdminView />}
+        {currentPath === 'super-admin' && (
+          <SuperAdminView
+            onSelectTenantDashboard={(slug) => {
+              setActiveTenantSlug(slug);
+              setCurrentPath('dashboard');
+            }}
+          />
+        )}
 
         {currentPath === 'privacy' && <PrivacyPolicyView />}
 

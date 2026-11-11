@@ -1,9 +1,5 @@
 import crypto from 'crypto';
-import { neon } from '@neondatabase/serverless';
-
-const DATABASE_URL = process.env.DATABASE_URL || '';
-const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
-const MASTER_ISSUER_ID = process.env.ISSUER_ID || '3388000000022258509';
+import { sql, ensureMigration, MASTER_ISSUER_ID } from '../../_db';
 const SERVICE_ACCOUNT_EMAIL =
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'oloyal-wallet-sa@banlis-bistro-app.iam.gserviceaccount.com';
 
@@ -116,6 +112,7 @@ function signGoogleWalletJwt(
 }
 
 export default async function handler(req: any, res: any) {
+  await ensureMigration();
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);

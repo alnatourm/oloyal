@@ -52,6 +52,7 @@ export interface CustomerMember {
   id: string;
   uid: string;
   name: string;
+  phone?: string;
   avatarUrl?: string;
   initials?: string;
   tier: 'GOLD VIP' | 'SILVER' | 'PLATINUM' | 'BRONZE';

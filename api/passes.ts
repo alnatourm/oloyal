@@ -1,9 +1,7 @@
-import { neon } from '@neondatabase/serverless';
-
-const DATABASE_URL = process.env.DATABASE_URL || '';
-const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
+import { sql, ensureMigration } from './_db';
 
 export default async function handler(req: any, res: any) {
+  await ensureMigration();
   if (req.method === 'GET') {
     if (sql) {
       try {
