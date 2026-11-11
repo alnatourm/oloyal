@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { sounds } from '../utils/sound';
 
 export const CustomerEnrollmentView: React.FC = () => {
@@ -37,11 +37,6 @@ export const CustomerEnrollmentView: React.FC = () => {
       setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    // Generate initial pass link on load
-    generatePass(customerName, email, phone);
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
