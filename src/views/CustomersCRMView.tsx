@@ -71,17 +71,60 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
     setSelectedMemberId(id);
   };
 
-  const handleAdjustPoints = (delta: number) => {
+  const handleAdjustPoints = async (delta: number) => {
     sounds.dialTick();
+    const targetMemberId = selectedMember.id;
+    if (!targetMemberId || targetMemberId === 'demo-0') {
+      triggerNotice('No active member selected');
+      return;
+    }
+
+    // Optimistically update UI
     setMembers((prev) =>
       prev.map((m) => {
-        if (m.id === selectedMember.id) {
+        if (m.id === targetMemberId) {
           const newPts = Math.max(0, m.points + delta);
-          return { ...m, points: newPts };
+          const tierStr = newPts >= 2000 ? 'PLATINUM' : newPts >= 1000 ? 'GOLD VIP' : 'SILVER';
+          return {
+            ...m,
+            points: newPts,
+            tier: tierStr,
+            tierColor: tierStr === 'PLATINUM' ? 'text-purple-500' : tierStr === 'GOLD VIP' ? 'text-primary' : 'text-on-surface',
+            tierBg: tierStr === 'PLATINUM' ? 'bg-purple-100 text-purple-800' : tierStr === 'GOLD VIP' ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-surface-container-high text-on-surface-variant',
+          };
         }
         return m;
       })
     );
+
+    try {
+      const res = await fetch(`/api/members/${targetMemberId}/points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points: delta, reason: delta >= 0 ? 'Manual Credit' : 'Manual Redemption' }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && typeof data.newPoints === 'number') {
+        const pts = data.newPoints;
+        const tierStr = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
+        setMembers((prev) =>
+          prev.map((m) => {
+            if (m.id === targetMemberId) {
+              return {
+                ...m,
+                points: pts,
+                tier: tierStr,
+              };
+            }
+            return m;
+          })
+        );
+        triggerNotice(`Points updated: ${pts.toLocaleString()} PTS (Synced to DB)`);
+      }
+    } catch (err) {
+      console.error('Failed to sync points with backend:', err);
+    }
   };
 
   const triggerNotice = (msg: string) => {
