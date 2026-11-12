@@ -30,8 +30,8 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
   const [authTab, setAuthTab] = useState<'signin' | 'signup'>('signin');
 
   // Sign In Form State
-  const [identifier, setIdentifier] = useState('alnatour.m@gmail.com');
-  const [password, setPassword] = useState('admin123');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -39,7 +39,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
   const [storeName, setStoreName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
-  const [signupPassword, setSignupPassword] = useState('admin123');
+  const [signupPassword, setSignupPassword] = useState('');
   const [brandColor, setBrandColor] = useState('#ff5722');
   const [archetype, setArchetype] = useState<'loyalty' | 'gift' | 'ticket'>('loyalty');
   const [plan, setPlan] = useState<'starter' | 'growth' | 'scale'>('growth');
@@ -1376,12 +1376,9 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     </div>
 
                     <div className="flex flex-col gap-1">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs uppercase tracking-wider text-outline font-semibold">
-                          Password
-                        </label>
-                        <span className="text-[11px] text-[#ff5722] font-semibold">Default: admin123</span>
-                      </div>
+                      <label className="text-xs uppercase tracking-wider text-outline font-semibold">
+                        Password
+                      </label>
                       <div className="h-11 px-3.5 rounded-xl bg-surface flex items-center shadow-inner">
                         <span className="material-symbols-outlined text-outline text-[18px] mr-2">lock</span>
                         <input
@@ -1419,51 +1416,6 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                         </>
                       )}
                     </button>
-
-                    {/* Quick Demo Fillers */}
-                    <div className="pt-3 border-t border-surface-container-highest flex flex-col gap-1.5">
-                      <span className="text-[10px] uppercase tracking-wider text-outline font-bold text-center">
-                        Quick Logins:
-                      </span>
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            sounds.click();
-                            setIdentifier('alnatour.m@gmail.com');
-                            setPassword('admin123');
-                          }}
-                          className="text-[11px] px-2.5 py-1 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-mono font-bold text-[#ff5722]"
-                          title="Admin Master Issuer"
-                        >
-                          alnatour.m@gmail.com (Admin)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            sounds.click();
-                            setIdentifier('banlis@oloyal.com');
-                            setPassword('admin123');
-                          }}
-                          className="text-[11px] px-2.5 py-1 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-mono"
-                          title="Merchant Owner"
-                        >
-                          banlis@oloyal.com (Merchant)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            sounds.click();
-                            setIdentifier('banlis');
-                            setPassword('admin123');
-                          }}
-                          className="text-[11px] px-2.5 py-1 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-mono"
-                          title="Merchant Slug"
-                        >
-                          banlis (Slug)
-                        </button>
-                      </div>
-                    </div>
                   </form>
                 )}
 

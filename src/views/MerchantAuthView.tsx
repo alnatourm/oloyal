@@ -13,8 +13,8 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
 
   // Unified Sign In form state
-  const [identifier, setIdentifier] = useState('alnatour.m@gmail.com');
-  const [password, setPassword] = useState('admin123');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -297,12 +297,9 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
-                      Password
-                    </label>
-                    <span className="text-[11px] text-[#ff5722] font-semibold">Default: admin123</span>
-                  </div>
+                  <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
+                    Password
+                  </label>
                   <div className="h-11 px-4 rounded-xl bg-surface tactile-deboss flex items-center">
                     <span className="material-symbols-outlined text-outline text-[18px] mr-2">lock</span>
                     <input
@@ -343,51 +340,6 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
                     </>
                   )}
                 </button>
-
-                {/* Quick Fillers */}
-                <div className="pt-3 border-t border-surface-container-highest flex flex-col gap-2">
-                  <span className="text-[11px] uppercase tracking-wider text-outline font-bold text-center">
-                    Quick Logins:
-                  </span>
-                  <div className="flex items-center justify-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.click();
-                        setIdentifier('alnatour.m@gmail.com');
-                        setPassword('admin123');
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-mono font-bold text-[#ff5722]"
-                      title="Admin coordinates"
-                    >
-                      alnatour.m@gmail.com (Admin)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.click();
-                        setIdentifier('banlis@oloyal.com');
-                        setPassword('admin123');
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-mono"
-                      title="Merchant store owner"
-                    >
-                      banlis@oloyal.com (Merchant)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.click();
-                        setIdentifier('banlis');
-                        setPassword('admin123');
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-mono"
-                      title="Merchant store slug"
-                    >
-                      banlis (Slug)
-                    </button>
-                  </div>
-                </div>
               </form>
             )}
 

@@ -124,7 +124,7 @@ export default async function handler(req: any, res: any) {
         )
         VALUES (
           ${tenantId}, ${slug}, ${storeName}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID},
-          ${finalOwnerName}, ${rawEmail}, ${passwordHash}, ${finalStatus}, ${rawPlan}, ${passLimit}, NOW()
+          ${finalOwnerName}, ${rawEmail}, crypt(${rawPassword}, gen_salt('bf')), ${finalStatus}, ${rawPlan}, ${passLimit}, NOW()
         )
         RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, status, plan, pass_limit, created_at;
       `;

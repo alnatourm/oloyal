@@ -41,8 +41,13 @@ export async function ensureMigration(): Promise<void> {
   if (!migrationPromise) {
     migrationPromise = (async () => {
       try {
-        console.log('[Migration] Running tenant auth and status columns migration in api/_db.ts...');
-        // Exact user specified migration command plus status and plan support:
+        console.log('[Migration] Enabling pgcrypto extension and running tenant auth migrations...');
+        try {
+          await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto;`;
+        } catch (extErr: any) {
+          console.warn('[Migration] pgcrypto extension notice:', extErr?.message || extErr);
+        }
+
         await sql`
           ALTER TABLE tenants 
           ADD COLUMN IF NOT EXISTS owner_name TEXT, 
@@ -53,9 +58,50 @@ export async function ensureMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS pass_limit INT DEFAULT 5000,
           ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
         `;
-        // Ensure default seed store is Active
-        await sql`UPDATE tenants SET status = 'Active' WHERE slug = 'banlis' AND (status IS NULL OR status = 'Pending Approval');`;
-        console.log('[Migration] SUCCESS: ALTER TABLE tenants completed with auth and package columns.');
+
+        // Seed Super Admin Master Issuer account in tenants table using pgcrypto crypt() hash
+        try {
+          await sql`
+            INSERT INTO tenants (
+              id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
+            )
+            VALUES (
+              't-admin-master',
+              'super-admin',
+              'Super Admin Master Issuer',
+              'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
+              '#ff5722',
+              'loyalty',
+              ${`${MASTER_ISSUER_ID}.tenant_super_admin_class`},
+              ${MASTER_ISSUER_ID},
+              'Super Admin Master Issuer',
+              'alnatour.m@gmail.com',
+              crypt('admin123', gen_salt('bf')),
+              'Active',
+              'scale',
+              50000,
+              NOW()
+            )
+            ON CONFLICT (owner_email) DO NOTHING;
+          `;
+        } catch (adminErr: any) {
+          console.warn('[Migration] Super admin seed notice:', adminErr?.message || adminErr);
+        }
+
+        // Ensure default seed store 'banlis' has Active status and crypt password hash
+        try {
+          await sql`
+            UPDATE tenants 
+            SET status = 'Active',
+                password_hash = COALESCE(password_hash, crypt('admin123', gen_salt('bf')))
+            WHERE (slug = 'banlis' OR slug = 'banlis-bistro' OR owner_email = 'banlis@oloyal.com')
+              AND (password_hash IS NULL OR password_hash = '');
+          `;
+        } catch (banlisErr: any) {
+          console.warn('[Migration] Banlis seed password notice:', banlisErr?.message || banlisErr);
+        }
+
+        console.log('[Migration] SUCCESS: pgcrypto enabled and tenants auth columns verified.');
       } catch (err: any) {
         console.warn('[Migration] Note on combined statement:', err?.message || err);
         try {

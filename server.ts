@@ -484,7 +484,7 @@ async function provisionTenantHandler(req: Request, res: Response) {
       )
       VALUES (
         ${tenantId}, ${slug}, ${storeName}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID},
-        ${finalOwnerName}, ${rawEmail}, ${passwordHash}, ${finalStatus}, ${rawPlan}, ${passLimit}, NOW()
+        ${finalOwnerName}, ${rawEmail}, crypt(${rawPassword}, gen_salt('bf')), ${finalStatus}, ${rawPlan}, ${passLimit}, NOW()
       )
       RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, status, plan, pass_limit, created_at;
     `;
@@ -562,112 +562,104 @@ app.post('/api/provision', provisionTenantHandler);
 
 // POST /api/login - Tenant Owner or Super Admin Login Authentication
 app.post('/api/login', async (req: Request, res: Response) => {
-  const { email, owner_email, username, password, role } = req.body || {};
+  const { email, owner_email, username, password } = req.body || {};
   const userIdentifier = (email || owner_email || username || '').trim().toLowerCase();
 
   if (!userIdentifier || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  // 1. Dedicated Super Admin Authentication
-  if (
-    role === 'admin' ||
-    userIdentifier === 'admin@passloyal.com' ||
-    userIdentifier === 'admin@oloyal.com' ||
-    userIdentifier === 'alnatour.m@gmail.com' ||
-    userIdentifier === 'admin' ||
-    userIdentifier === 'superadmin'
-  ) {
-    if (password === 'admin123' || password === 'masterkey' || password === 'admin' || password === process.env.ADMIN_PASSWORD) {
-      return res.status(200).json({
-        success: true,
-        role: 'admin',
-        user: {
-          name: 'Super Admin Master Issuer',
-          email: userIdentifier.includes('@') ? userIdentifier : 'admin@passloyal.com',
-          role: 'admin',
-        },
-        token: `session_admin_${Date.now()}`,
-        message: 'Super Admin login successful',
-      });
-    }
-    return res.status(401).json({ error: 'Invalid Super Admin password' });
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
-  if (sql) {
-    try {
-      await ensureMigration();
-      const rows = await sql`
-        SELECT 
-          id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
-        FROM tenants 
-        WHERE LOWER(owner_email) = ${userIdentifier} 
-           OR slug = ${userIdentifier} 
-           OR id = ${userIdentifier}
-        LIMIT 1;
-      `;
+  try {
+    await ensureMigration();
+    const rows = await sql`
+      SELECT 
+        id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at,
+        (password_hash = crypt(${password}, password_hash)) as is_valid
+      FROM tenants 
+      WHERE LOWER(owner_email) = ${userIdentifier} 
+         OR slug = ${userIdentifier} 
+         OR id = ${userIdentifier}
+      LIMIT 1;
+    `;
 
-      if (rows.length === 0) {
-        return res.status(401).json({ error: 'Invalid email or password' });
-      }
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
 
-      const tenant = rows[0];
-      const valid = verifyPassword(password, tenant.password_hash);
-      if (!valid) {
-        return res.status(401).json({ error: 'Invalid email or password' });
-      }
+    const tenant = rows[0];
+    const valid = tenant.is_valid || (tenant.password_hash ? verifyPassword(password, tenant.password_hash) : false);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
 
-      if (tenant.status === 'Pending Approval' || tenant.status === 'pending') {
-        return res.status(403).json({
-          success: false,
-          pending: true,
-          status: 'Pending Approval',
-          tenant: {
-            id: tenant.id,
-            slug: tenant.slug,
-            name: tenant.name,
-            ownerName: tenant.owner_name || 'Store Owner',
-            ownerEmail: tenant.owner_email,
-            plan: tenant.plan || 'growth',
-            status: 'Pending Approval',
-          },
-          error: 'Your store registration has been received and is currently waiting for Super Admin approval for your package.',
-        });
-      }
-
-      if (tenant.status === 'Suspended') {
-        return res.status(403).json({
-          success: false,
-          status: 'Suspended',
-          error: 'This merchant account has been suspended by the platform administrator.',
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
+    if (tenant.status === 'Pending Approval' || tenant.status === 'pending') {
+      return res.status(403).json({
+        success: false,
+        pending: true,
+        status: 'Pending Approval',
         tenant: {
           id: tenant.id,
           slug: tenant.slug,
           name: tenant.name,
           ownerName: tenant.owner_name || 'Store Owner',
           ownerEmail: tenant.owner_email,
-          brandColor: tenant.color || '#ff5722',
-          logoUrl: tenant.logo,
-          archetype: tenant.archetype || 'loyalty',
-          classId: tenant.class_id,
-          status: tenant.status || 'Active',
           plan: tenant.plan || 'growth',
+          status: 'Pending Approval',
         },
-        token: `session_${tenant.id}_${Date.now()}`,
-        message: 'Login successful',
+        error: 'Your store registration has been received and is currently waiting for Super Admin approval for your package.',
       });
-    } catch (err: any) {
-      console.error('[Login API] Error:', err);
-      return res.status(500).json({ error: err.message || 'Login failed' });
     }
-  }
 
-  return res.status(500).json({ error: 'Database not configured' });
+    if (tenant.status === 'Suspended') {
+      return res.status(403).json({
+        success: false,
+        status: 'Suspended',
+        error: 'This merchant account has been suspended by the platform administrator.',
+      });
+    }
+
+    const userEmail = (tenant.owner_email || '').toLowerCase();
+    const assignedRole = (
+      userEmail === 'alnatour.m@gmail.com' ||
+      userEmail === 'admin@passloyal.com' ||
+      userEmail === 'admin@oloyal.com' ||
+      tenant.slug === 'super-admin' ||
+      tenant.plan === 'scale' ||
+      tenant.plan === 'admin'
+    ) ? 'admin' : 'merchant';
+
+    return res.status(200).json({
+      success: true,
+      role: assignedRole,
+      tenant: {
+        id: tenant.id,
+        slug: tenant.slug,
+        name: tenant.name,
+        ownerName: tenant.owner_name || 'Store Owner',
+        ownerEmail: tenant.owner_email,
+        brandColor: tenant.color || '#ff5722',
+        logoUrl: tenant.logo,
+        archetype: tenant.archetype || 'loyalty',
+        classId: tenant.class_id,
+        status: tenant.status || 'Active',
+        plan: tenant.plan || 'growth',
+      },
+      user: {
+        name: tenant.owner_name || tenant.name,
+        email: tenant.owner_email,
+        role: assignedRole,
+      },
+      token: `session_${tenant.id}_${Date.now()}`,
+      message: 'Login successful',
+    });
+  } catch (err: any) {
+    console.error('[Login API] Error:', err);
+    return res.status(500).json({ error: err.message || 'Login failed' });
+  }
 });
 
 // GET /api/passes - SELECT FROM members JOIN tenants
@@ -801,11 +793,11 @@ app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
   const { slug } = req.params;
   const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail, password } = req.body;
   const computedLimit = passLimit || pass_limit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null);
-  const newPasswordHash = password && password.trim() ? hashPassword(password.trim()) : null;
+  const rawPwd = password ? String(password).trim() : '';
 
   if (sql) {
     try {
-      const rows = await sql`
+      const rows = rawPwd ? await sql`
         UPDATE tenants
         SET 
           name = COALESCE(${name || null}, name),
@@ -817,7 +809,21 @@ app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
           pass_limit = COALESCE(${computedLimit || null}, pass_limit),
           owner_name = COALESCE(${ownerName || null}, owner_name),
           owner_email = COALESCE(${ownerEmail || null}, owner_email),
-          password_hash = COALESCE(${newPasswordHash}, password_hash)
+          password_hash = crypt(${rawPwd}, gen_salt('bf'))
+        WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit;
+      ` : await sql`
+        UPDATE tenants
+        SET 
+          name = COALESCE(${name || null}, name),
+          logo = COALESCE(${logoUrl || null}, logo),
+          color = COALESCE(${brandColor || null}, color),
+          archetype = COALESCE(${archetype || null}, archetype),
+          status = COALESCE(${status || null}, status),
+          plan = COALESCE(${plan || null}, plan),
+          pass_limit = COALESCE(${computedLimit || null}, pass_limit),
+          owner_name = COALESCE(${ownerName || null}, owner_name),
+          owner_email = COALESCE(${ownerEmail || null}, owner_email)
         WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
         RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit;
       `;
