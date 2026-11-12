@@ -1,4 +1,4 @@
-import { sql, ensureMigration } from '../../_db';
+import { sql, ensureMigration } from '../../_db.js';
 
 export default async function handler(req: any, res: any) {
   await ensureMigration();

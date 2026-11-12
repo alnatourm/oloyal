@@ -1,3 +1,3 @@
-import handler from './tenants';
+import handler from './tenants.js';
 
 export default handler;

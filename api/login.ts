@@ -1,4 +1,4 @@
-import { sql, ensureMigration, verifyPassword } from './_db';
+import { sql, ensureMigration, verifyPassword } from './_db.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

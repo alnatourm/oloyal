@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { sql, ensureMigration, MASTER_ISSUER_ID } from '../../_db';
+import { sql, ensureMigration, MASTER_ISSUER_ID } from '../../_db.js';
 const SERVICE_ACCOUNT_EMAIL =
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'oloyal-wallet-sa@banlis-bistro-app.iam.gserviceaccount.com';
 
