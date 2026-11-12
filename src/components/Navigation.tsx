@@ -23,7 +23,6 @@ export const Navigation: React.FC<NavigationProps> = ({
   };
 
   const allNavItems: { path: NavigationPath; title: string; icon: string; adminOnly?: boolean }[] = [
-    { path: 'landing', title: 'PassLoyal Landing Page', icon: 'public' },
     { path: 'dashboard', title: 'Dashboard', icon: 'space_dashboard' },
     { path: 'pass-studio', title: 'Pass Studio / Designer', icon: 'palette' },
     { path: 'pos-cashier', title: 'POS Cashier Terminal', icon: 'point_of_sale' },
