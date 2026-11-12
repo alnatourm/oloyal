@@ -128,19 +128,5 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // Fallback for offline / dev mode
-  return res.status(200).json({
-    success: true,
-    tenant: {
-      id: 't-banlis',
-      slug: 'banlis',
-      name: 'Banlis Bistro & Dining',
-      ownerName: 'Admin',
-      ownerEmail: email,
-      brandColor: '#ff5722',
-      archetype: 'loyalty',
-    },
-    token: `tok_fallback_${Date.now()}`,
-    message: 'Login successful (offline fallback)',
-  });
+  return res.status(500).json({ error: 'Database not configured' });
 }

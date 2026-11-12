@@ -49,76 +49,129 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json(mapped);
       } catch (err) {
         console.error('[Neon Postgres API] GET /api/tenants error:', err);
+        return res.status(500).json({ error: 'Database connection failed' });
       }
     }
-    return res.status(200).json([]);
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
   if (req.method === 'POST') {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const { name, legalEntity, brandColor, logoUrl, archetype, plan, status, ownerName, owner_name, ownerEmail, owner_email, password } = body;
-    if (!name || !name.trim()) {
+
+    // 4) Validation: store name, owner_email, password >= 8 chars, plan in [starter, growth, scale]
+    const storeName = (name || '').trim();
+    if (!storeName) {
       return res.status(400).json({ error: 'Store name is required' });
     }
 
-    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const rawEmail = (ownerEmail || owner_email || '').trim().toLowerCase();
+    if (!rawEmail || !rawEmail.includes('@') || !rawEmail.includes('.')) {
+      return res.status(400).json({ error: 'Valid owner email is required' });
+    }
+
+    const rawPassword = password ? String(password).trim() : '';
+    if (!rawPassword || rawPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    const rawPlan = (plan || 'growth').trim().toLowerCase();
+    if (!['starter', 'growth', 'scale'].includes(rawPlan)) {
+      return res.status(400).json({ error: 'Plan must be one of: starter, growth, scale' });
+    }
+
+    if (!sql) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const slug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `store-${Date.now()}`;
+
+    // 3) Handle duplicates gracefully: if slug or owner_email exists, return 409
+    try {
+      const existing = await sql`
+        SELECT id, slug, owner_email FROM tenants 
+        WHERE slug = ${slug} OR LOWER(owner_email) = ${rawEmail}
+        LIMIT 1;
+      `;
+      if (existing && existing.length > 0) {
+        return res.status(409).json({ error: 'Store name or email already exists — try another' });
+      }
+    } catch (checkErr: any) {
+      console.error('REGISTER_FAIL', checkErr);
+      return res.status(500).json({
+        error: checkErr.message || 'Database error during duplicate verification',
+        code: checkErr.code,
+        detail: checkErr.detail,
+      });
+    }
+
     const tenantId = `t-${Date.now()}`;
     const classId = `${MASTER_ISSUER_ID}.tenant_${tenantId}_${archetype || 'loyalty'}_class`;
     const logo = logoUrl || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop';
     const color = brandColor || '#ff5722';
     const finalOwnerName = (ownerName || owner_name || '').trim() || 'Store Manager';
-    const finalOwnerEmail = (ownerEmail || owner_email || '').trim().toLowerCase() || `${slug}@oloyal.com`;
-    const passwordHash = hashPassword(password || 'admin123');
-    const finalPlan = plan || 'growth';
-    const passLimit = finalPlan === 'scale' ? 50000 : finalPlan === 'starter' ? 500 : 5000;
+    const passwordHash = hashPassword(rawPassword);
+    const passLimit = rawPlan === 'scale' ? 50000 : rawPlan === 'starter' ? 500 : 5000;
     const finalStatus = status || 'Pending Approval'; // Default new registrations to Pending Approval
 
     let insertedRow: any = null;
 
-    if (sql) {
-      try {
-        const inserted = await sql`
-          INSERT INTO tenants (
-            id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
-          )
-          VALUES (
-            ${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID},
-            ${finalOwnerName}, ${finalOwnerEmail}, ${passwordHash}, ${finalStatus}, ${finalPlan}, ${passLimit}, NOW()
-          )
-          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, status, plan, pass_limit, created_at;
-        `;
-        if (inserted.length > 0) {
-          insertedRow = inserted[0];
-        }
-      } catch (err: any) {
-        console.error('[Neon Postgres API] INSERT tenant error:', err);
-        try {
-          const inserted = await sql`
-            INSERT INTO tenants (id, slug, name, logo, color, archetype, class_id, issuer_id, status)
-            VALUES (${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID}, ${finalStatus})
-            RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status;
-          `;
-          if (inserted.length > 0) {
-            insertedRow = inserted[0];
-          }
-        } catch (innerErr) {
-          console.error('[Neon Postgres API] Secondary INSERT error:', innerErr);
-        }
+    // 1) Wrap DB insert in try/catch and return {error: err.message, code: err.code, detail: err.detail}
+    try {
+      const inserted = await sql`
+        INSERT INTO tenants (
+          id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
+        )
+        VALUES (
+          ${tenantId}, ${slug}, ${storeName}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID},
+          ${finalOwnerName}, ${rawEmail}, ${passwordHash}, ${finalStatus}, ${rawPlan}, ${passLimit}, NOW()
+        )
+        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, status, plan, pass_limit, created_at;
+      `;
+      if (inserted && inserted.length > 0) {
+        insertedRow = inserted[0];
       }
+    } catch (err: any) {
+      // 5) Log full error to Vercel Logs with console.error("REGISTER_FAIL", err)
+      console.error('REGISTER_FAIL', err);
+
+      // 3) Duplicate key code 23505
+      if (
+        err.code === '23505' ||
+        err.message?.includes('duplicate key') ||
+        err.message?.includes('unique constraint') ||
+        err.detail?.includes('already exists')
+      ) {
+        return res.status(409).json({
+          error: 'Store name or email already exists — try another',
+          code: err.code,
+          detail: err.detail,
+        });
+      }
+
+      return res.status(500).json({
+        error: err.message || 'Database error occurred during store registration',
+        code: err.code,
+        detail: err.detail,
+      });
+    }
+
+    if (!insertedRow) {
+      return res.status(500).json({ error: 'Failed to insert tenant record into database' });
     }
 
     const responseTenant = {
       id: insertedRow?.id || tenantId,
       slug: insertedRow?.slug || slug,
-      name: insertedRow?.name || name.trim(),
+      name: insertedRow?.name || storeName,
       ownerName: insertedRow?.owner_name || finalOwnerName,
-      ownerEmail: insertedRow?.owner_email || finalOwnerEmail,
-      legalEntity: legalEntity || `${name.trim()} LLC`,
+      ownerEmail: insertedRow?.owner_email || rawEmail,
+      legalEntity: legalEntity || `${storeName} LLC`,
       brandColor: insertedRow?.color || color,
       logoUrl: insertedRow?.logo || logo,
       archetype: insertedRow?.archetype || archetype || 'loyalty',
       classId: insertedRow?.class_id || classId,
-      plan: insertedRow?.plan || finalPlan,
+      plan: insertedRow?.plan || rawPlan,
       passLimit: Number(insertedRow?.pass_limit || passLimit),
       passCount: 0,
       status: insertedRow?.status || finalStatus,
@@ -179,13 +232,14 @@ export default async function handler(req: any, res: any) {
             message: 'Tenant status and plan updated successfully',
           });
         }
+        return res.status(404).json({ error: 'Tenant not found' });
       } catch (err: any) {
         console.error('[Neon Postgres API] PATCH /api/tenants error:', err);
         return res.status(500).json({ error: err.message || 'Failed to update tenant' });
       }
     }
 
-    return res.status(200).json({ success: true, message: 'Tenant updated' });
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
   res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'PUT']);

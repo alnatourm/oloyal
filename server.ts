@@ -114,7 +114,24 @@ async function initDb() {
       `;
     }
 
-    // Run tenant auth columns migration
+    // Startup migration for tenant auth and status columns
+    try {
+      await sql`
+        ALTER TABLE tenants 
+        ADD COLUMN IF NOT EXISTS owner_name TEXT, 
+        ADD COLUMN IF NOT EXISTS owner_email TEXT UNIQUE, 
+        ADD COLUMN IF NOT EXISTS password_hash TEXT, 
+        ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Pending Approval',
+        ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'growth',
+        ADD COLUMN IF NOT EXISTS pass_limit INT DEFAULT 5000,
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+      `;
+      console.log('[Neon Postgres] Startup migration: ALTER TABLE tenants completed successfully.');
+    } catch (migErr: any) {
+      console.warn('[Neon Postgres] Startup migration notice:', migErr?.message || migErr);
+    }
+
+    // Run tenant auth columns migration verification
     await ensureMigration();
 
     console.log('[Neon Postgres] Database initialized cleanly with auth migrations.');
@@ -154,38 +171,6 @@ interface MemberRow {
   google_object_id: string;
 }
 
-const fallbackTenants: TenantRow[] = [
-  {
-    id: 't-banlis-01',
-    slug: 'banlis-bistro',
-    name: 'Banlis Bistro & Dining',
-    logo: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
-    color: '#ff5722',
-    archetype: 'loyalty',
-    class_id: `${MASTER_ISSUER_ID}.tenant_banlis_loyalty_v3`,
-    issuer_id: MASTER_ISSUER_ID,
-    owner_name: 'Elena Rostova',
-    owner_email: 'banlis@oloyal.com',
-    status: 'Active',
-    plan: 'growth',
-    pass_limit: 5000,
-    created_at: new Date().toISOString(),
-  },
-];
-
-const fallbackMembers: MemberRow[] = [
-  {
-    id: '889042',
-    tenant_id: 't-banlis-01',
-    name: 'Marcus Vance',
-    phone: '+1 (555) 234-5678',
-    email: 'marcus.vance@example.com',
-    member_id: '889042',
-    points: 1450,
-    balance_cents: 0,
-    google_object_id: `${MASTER_ISSUER_ID}.customer_889042_obj`,
-  },
-];
 
 function normalizeWalletPrivateKey(raw?: string): string {
   let k = raw || process.env.GOOGLE_PRIVATE_KEY || '';
@@ -301,48 +286,47 @@ function signGoogleWalletJwt(
 
 // GET /api/stats - DB Aggregate Counts
 app.get('/api/stats', async (_req: Request, res: Response) => {
-  let activeTenants = 0;
-  let totalPasses = 0;
-
-  if (sql) {
-    try {
-      const tenantRows = await sql`SELECT COUNT(*)::int as count FROM tenants;`;
-      const memberRows = await sql`SELECT COUNT(*)::int as count FROM members;`;
-      activeTenants = tenantRows[0]?.count || 0;
-      totalPasses = memberRows[0]?.count || 0;
-    } catch (err) {
-      console.error('[Neon Postgres] GET /api/stats error:', err);
-    }
-  } else {
-    activeTenants = fallbackTenants.length;
-    totalPasses = fallbackMembers.length;
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
-  res.json({
-    activeTenants,
-    totalPasses,
-    todayRevenue: totalPasses * 35.50,
-    redemptionRate: totalPasses > 0 ? '28.4%' : '0%',
-    avgCheck: 48.20,
-    pointsLiability: totalPasses * 100,
-  });
+  try {
+    const tenantRows = await sql`SELECT COUNT(*)::int as count FROM tenants;`;
+    const memberRows = await sql`SELECT COUNT(*)::int as count FROM members;`;
+    const activeTenants = tenantRows[0]?.count || 0;
+    const totalPasses = memberRows[0]?.count || 0;
+
+    res.json({
+      activeTenants,
+      totalPasses,
+      todayRevenue: totalPasses * 35.50,
+      redemptionRate: totalPasses > 0 ? '28.4%' : '0%',
+      avgCheck: 48.20,
+      pointsLiability: totalPasses * 100,
+    });
+  } catch (err) {
+    console.error('[Neon Postgres] GET /api/stats error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
 });
 
 // GET /api/health
 app.get('/api/health', async (_req: Request, res: Response) => {
-  let tenantCount = fallbackTenants.length;
+  let tenantCount = 0;
+  let dbStatus = 'Not Configured';
   if (sql) {
     try {
       const rows = await sql`SELECT COUNT(*)::int as count FROM tenants;`;
       tenantCount = rows[0]?.count || 0;
+      dbStatus = 'Neon Postgres Connected';
     } catch {
-      // Fallback
+      dbStatus = 'Database Connection Failed';
     }
   }
 
   res.json({
     status: 'online',
-    database: sql ? 'Neon Postgres Connected' : 'Fallback Local Cache',
+    database: dbStatus,
     masterIssuerId: MASTER_ISSUER_ID,
     serviceAccount: SERVICE_ACCOUNT_EMAIL,
     hasPrivateKey: !!PRIVATE_KEY_PEM,
@@ -378,161 +362,176 @@ app.post('/api/credentials', (req: Request, res: Response) => {
 
 // GET /api/tenants - SELECT * FROM tenants IN NEON POSTGRES WITH PASS COUNT & AUTH COLUMNS
 app.get('/api/tenants', async (_req: Request, res: Response) => {
-  if (sql) {
-    try {
-      const rows = await sql`
-        SELECT 
-          t.id, 
-          t.slug, 
-          t.name, 
-          t.logo, 
-          t.color, 
-          t.archetype, 
-          t.class_id, 
-          t.issuer_id,
-          t.owner_name,
-          t.owner_email,
-          t.status,
-          t.plan,
-          t.pass_limit,
-          t.created_at,
-          COUNT(m.id)::int as pass_count
-        FROM tenants t
-        LEFT JOIN members m ON m.tenant_id = t.id
-        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
-        ORDER BY t.id;
-      `;
-
-      const mapped = rows.map((r) => ({
-        id: r.id,
-        slug: r.slug,
-        name: r.name,
-        ownerName: r.owner_name || 'Store Manager',
-        ownerEmail: r.owner_email || `${r.slug}@oloyal.com`,
-        legalEntity: `${r.name} LLC`,
-        brandColor: r.color || '#ff5722',
-        logoUrl: r.logo,
-        archetype: r.archetype || 'loyalty',
-        classId: r.class_id,
-        plan: r.plan || 'growth',
-        passLimit: Number(r.pass_limit || (r.plan === 'scale' ? 50000 : r.plan === 'starter' ? 500 : 5000)),
-        passCount: Number(r.pass_count || 0),
-        status: r.status || 'Active',
-        createdAt: r.created_at || new Date().toISOString(),
-      }));
-      return res.json(mapped);
-    } catch (err) {
-      console.error('[Neon Postgres] GET /api/tenants error:', err);
-    }
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
-  // Fallback if DATABASE_URL is unconfigured
-  res.json(
-    fallbackTenants.map((t) => ({
-      id: t.id,
-      slug: t.slug,
-      name: t.name,
-      ownerName: t.owner_name || 'Store Manager',
-      ownerEmail: t.owner_email || `${t.slug}@oloyal.com`,
-      legalEntity: `${t.name} LLC`,
-      brandColor: t.color,
-      logoUrl: t.logo,
-      archetype: t.archetype,
-      classId: t.class_id,
-      plan: t.plan || 'growth',
-      passLimit: t.pass_limit || 5000,
-      passCount: 0,
-      status: t.status || 'Active',
-      createdAt: t.created_at || new Date().toISOString(),
-    }))
-  );
+  try {
+    const rows = await sql`
+      SELECT 
+        t.id, 
+        t.slug, 
+        t.name, 
+        t.logo, 
+        t.color, 
+        t.archetype, 
+        t.class_id, 
+        t.issuer_id,
+        t.owner_name,
+        t.owner_email,
+        t.status,
+        t.plan,
+        t.pass_limit,
+        t.created_at,
+        COUNT(m.id)::int as pass_count
+      FROM tenants t
+      LEFT JOIN members m ON m.tenant_id = t.id
+      GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+      ORDER BY t.id;
+    `;
+
+    const mapped = rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      ownerName: r.owner_name || 'Store Manager',
+      ownerEmail: r.owner_email || `${r.slug}@oloyal.com`,
+      legalEntity: `${r.name} LLC`,
+      brandColor: r.color || '#ff5722',
+      logoUrl: r.logo,
+      archetype: r.archetype || 'loyalty',
+      classId: r.class_id,
+      plan: r.plan || 'growth',
+      passLimit: Number(r.pass_limit || (r.plan === 'scale' ? 50000 : r.plan === 'starter' ? 500 : 5000)),
+      passCount: Number(r.pass_count || 0),
+      status: r.status || 'Active',
+      createdAt: r.created_at || new Date().toISOString(),
+    }));
+    return res.json(mapped);
+  } catch (err) {
+    console.error('[Neon Postgres] GET /api/tenants error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
 });
 
-// Helper for provisioning a tenant
+// Helper for provisioning and registering a tenant
 async function provisionTenantHandler(req: Request, res: Response) {
   const { name, legalEntity, brandColor, logoUrl, archetype, plan, status, ownerName, owner_name, ownerEmail, owner_email, password } = req.body || {};
-  if (!name || !name.trim()) {
+
+  // 4) Validation: store name, owner_email, password >= 8 chars, plan in [starter, growth, scale]
+  const storeName = (name || '').trim();
+  if (!storeName) {
     return res.status(400).json({ error: 'Store name is required' });
   }
 
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const rawEmail = (ownerEmail || owner_email || '').trim().toLowerCase();
+  if (!rawEmail || !rawEmail.includes('@') || !rawEmail.includes('.')) {
+    return res.status(400).json({ error: 'Valid owner email is required' });
+  }
+
+  const rawPassword = password ? String(password).trim() : '';
+  if (!rawPassword || rawPassword.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  const rawPlan = (plan || 'growth').trim().toLowerCase();
+  if (!['starter', 'growth', 'scale'].includes(rawPlan)) {
+    return res.status(400).json({ error: 'Plan must be one of: starter, growth, scale' });
+  }
+
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const slug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `store-${Date.now()}`;
+
+  // 3) Handle duplicates gracefully: if slug or owner_email exists, return 409
+  try {
+    await ensureMigration();
+    const existing = await sql`
+      SELECT id, slug, owner_email FROM tenants 
+      WHERE slug = ${slug} OR LOWER(owner_email) = ${rawEmail}
+      LIMIT 1;
+    `;
+    if (existing && existing.length > 0) {
+      return res.status(409).json({ error: 'Store name or email already exists — try another' });
+    }
+  } catch (checkErr: any) {
+    console.error('REGISTER_FAIL', checkErr);
+    return res.status(500).json({
+      error: checkErr.message || 'Database error during duplicate verification',
+      code: checkErr.code,
+      detail: checkErr.detail,
+    });
+  }
+
   const tenantId = `t-${Date.now()}`;
   const classId = `${MASTER_ISSUER_ID}.tenant_${tenantId}_${archetype || 'loyalty'}_class`;
   const logo = logoUrl || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop';
   const color = brandColor || '#ff5722';
   const finalOwnerName = (ownerName || owner_name || '').trim() || 'Store Manager';
-  const finalOwnerEmail = (ownerEmail || owner_email || '').trim().toLowerCase() || `${slug}@oloyal.com`;
-  const passwordHash = hashPassword(password || 'admin123');
-  const finalPlan = plan || 'growth';
-  const passLimit = finalPlan === 'scale' ? 50000 : finalPlan === 'starter' ? 500 : 5000;
+  const passwordHash = hashPassword(rawPassword);
+  const passLimit = rawPlan === 'scale' ? 50000 : rawPlan === 'starter' ? 500 : 5000;
   const finalStatus = status || 'Pending Approval'; // Default new registrations to Pending Approval
 
   let insertedRow: any = null;
 
-  if (sql) {
-    try {
-      await ensureMigration();
-      const inserted = await sql`
-        INSERT INTO tenants (
-          id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
-        )
-        VALUES (
-          ${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID},
-          ${finalOwnerName}, ${finalOwnerEmail}, ${passwordHash}, ${finalStatus}, ${finalPlan}, ${passLimit}, NOW()
-        )
-        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, status, plan, pass_limit, created_at;
-      `;
-      if (inserted.length > 0) {
-        insertedRow = inserted[0];
-      }
-    } catch (err) {
-      console.error('[Neon Postgres] INSERT tenant error:', err);
-      try {
-        const inserted = await sql`
-          INSERT INTO tenants (id, slug, name, logo, color, archetype, class_id, issuer_id, status)
-          VALUES (${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID}, ${finalStatus})
-          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status;
-        `;
-        if (inserted.length > 0) {
-          insertedRow = inserted[0];
-        }
-      } catch (innerErr) {
-        console.error('[Neon Postgres] Fallback INSERT tenant error:', innerErr);
-      }
+  // 1) Wrap DB insert in try/catch and return {error: err.message, code: err.code, detail: err.detail}
+  try {
+    const inserted = await sql`
+      INSERT INTO tenants (
+        id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
+      )
+      VALUES (
+        ${tenantId}, ${slug}, ${storeName}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID},
+        ${finalOwnerName}, ${rawEmail}, ${passwordHash}, ${finalStatus}, ${rawPlan}, ${passLimit}, NOW()
+      )
+      RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, status, plan, pass_limit, created_at;
+    `;
+    if (inserted && inserted.length > 0) {
+      insertedRow = inserted[0];
     }
-  } else {
-    const fallbackItem = {
-      id: tenantId,
-      slug,
-      name: name.trim(),
-      logo,
-      color,
-      archetype: archetype || 'loyalty',
-      class_id: classId,
-      issuer_id: MASTER_ISSUER_ID,
-      owner_name: finalOwnerName,
-      owner_email: finalOwnerEmail,
-      status: finalStatus,
-      plan: finalPlan,
-      pass_limit: passLimit,
-      created_at: new Date().toISOString(),
-    };
-    fallbackTenants.push(fallbackItem);
-    insertedRow = fallbackItem;
+  } catch (err: any) {
+    // 5) Log full error to Vercel Logs with console.error("REGISTER_FAIL", err)
+    console.error('REGISTER_FAIL', err);
+
+    // 3) Duplicate key code 23505
+    if (
+      err.code === '23505' ||
+      err.message?.includes('duplicate key') ||
+      err.message?.includes('unique constraint') ||
+      err.detail?.includes('already exists')
+    ) {
+      return res.status(409).json({
+        error: 'Store name or email already exists — try another',
+        code: err.code,
+        detail: err.detail,
+      });
+    }
+
+    return res.status(500).json({
+      error: err.message || 'Database error occurred during store registration',
+      code: err.code,
+      detail: err.detail,
+    });
+  }
+
+  if (!insertedRow) {
+    return res.status(500).json({ error: 'Failed to insert tenant record into database' });
   }
 
   const responseTenant = {
     id: insertedRow?.id || tenantId,
     slug: insertedRow?.slug || slug,
-    name: insertedRow?.name || name.trim(),
+    name: insertedRow?.name || storeName,
     ownerName: insertedRow?.owner_name || finalOwnerName,
-    ownerEmail: insertedRow?.owner_email || finalOwnerEmail,
-    legalEntity: legalEntity || `${name.trim()} LLC`,
+    ownerEmail: insertedRow?.owner_email || rawEmail,
+    legalEntity: legalEntity || `${storeName} LLC`,
     brandColor: insertedRow?.color || color,
     logoUrl: insertedRow?.logo || logo,
     archetype: insertedRow?.archetype || archetype || 'loyalty',
     classId: insertedRow?.class_id || classId,
-    plan: insertedRow?.plan || finalPlan,
+    plan: insertedRow?.plan || rawPlan,
     passLimit: Number(insertedRow?.pass_limit || passLimit),
     passCount: 0,
     status: insertedRow?.status || finalStatus,
@@ -556,7 +555,8 @@ async function provisionTenantHandler(req: Request, res: Response) {
   });
 }
 
-// POST /api/tenants and /api/provision
+// POST /api/register, /api/tenants, and /api/provision
+app.post('/api/register', provisionTenantHandler);
 app.post('/api/tenants', provisionTenantHandler);
 app.post('/api/provision', provisionTenantHandler);
 
@@ -667,267 +667,133 @@ app.post('/api/login', async (req: Request, res: Response) => {
     }
   }
 
-  // Fallback for mock preview
-  const found = fallbackTenants.find(
-    (t) =>
-      t.slug === userIdentifier ||
-      t.owner_email === userIdentifier ||
-      t.id === userIdentifier ||
-      (userIdentifier.includes('banlis') && t.slug.includes('banlis'))
-  );
-
-  if (found) {
-    if (found.status === 'Pending Approval' || found.status === 'pending') {
-      return res.status(403).json({
-        success: false,
-        pending: true,
-        status: 'Pending Approval',
-        tenant: {
-          id: found.id,
-          slug: found.slug,
-          name: found.name,
-          ownerName: found.owner_name || 'Store Owner',
-          ownerEmail: found.owner_email || userIdentifier,
-          plan: found.plan || 'growth',
-          status: 'Pending Approval',
-        },
-        error: 'Your store registration has been received and is currently waiting for Super Admin approval for your package.',
-      });
-    }
-
-    if (found.status === 'Suspended') {
-      return res.status(403).json({
-        success: false,
-        status: 'Suspended',
-        error: 'This merchant account has been suspended by the platform administrator.',
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      tenant: {
-        id: found.id,
-        slug: found.slug,
-        name: found.name,
-        ownerName: found.owner_name || 'Store Owner',
-        ownerEmail: found.owner_email || userIdentifier,
-        brandColor: found.color || '#ff5722',
-        logoUrl: found.logo,
-        archetype: found.archetype || 'loyalty',
-        classId: found.class_id,
-        status: found.status || 'Active',
-        plan: found.plan || 'growth',
-      },
-      token: `session_mock_${Date.now()}`,
-      message: 'Login successful (offline fallback)',
-    });
-  }
-
-  return res.status(200).json({
-    success: true,
-    tenant: {
-      id: 't-banlis',
-      slug: 'banlis',
-      name: 'Banlis Bistro & Dining',
-      ownerName: 'Store Owner',
-      ownerEmail: userIdentifier,
-      brandColor: '#ff5722',
-      status: 'Active',
-      plan: 'growth',
-    },
-    token: `session_mock_${Date.now()}`,
-    message: 'Login successful (offline fallback)',
-  });
+  return res.status(500).json({ error: 'Database not configured' });
 });
 
 // GET /api/passes - SELECT FROM members JOIN tenants
 app.get('/api/passes', async (_req: Request, res: Response) => {
-  if (sql) {
-    try {
-      const rows = await sql`
-        SELECT 
-          m.id,
-          m.tenant_id,
-          m.name as customer_name,
-          m.phone,
-          m.email,
-          m.member_id,
-          m.points,
-          m.balance_cents,
-          m.google_object_id,
-          t.name as store_name,
-          t.color as brand_color,
-          t.logo as logo_url,
-          t.class_id
-        FROM members m
-        JOIN tenants t ON m.tenant_id = t.id
-        ORDER BY m.id DESC;
-      `;
-      return res.json(rows);
-    } catch (err) {
-      console.error('[Neon Postgres] JOIN members AND tenants error:', err);
-    }
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
-  // Fallback
-  const mapped = fallbackMembers.map((m) => {
-    const t = fallbackTenants.find((ten) => ten.id === m.tenant_id) || fallbackTenants[0];
-    return {
-      id: m.id,
-      tenant_id: m.tenant_id,
-      customer_name: m.name,
-      phone: m.phone,
-      email: m.email,
-      member_id: m.member_id,
-      points: m.points,
-      balance_cents: m.balance_cents,
-      google_object_id: m.google_object_id,
-      store_name: t.name,
-      brand_color: t.color,
-      logo_url: t.logo,
-      class_id: t.class_id,
-    };
-  });
-
-  res.json(mapped);
+  try {
+    const rows = await sql`
+      SELECT 
+        m.id,
+        m.tenant_id,
+        m.name as customer_name,
+        m.phone,
+        m.email,
+        m.member_id,
+        m.points,
+        m.balance_cents,
+        m.google_object_id,
+        t.name as store_name,
+        t.color as brand_color,
+        t.logo as logo_url,
+        t.class_id
+      FROM members m
+      JOIN tenants t ON m.tenant_id = t.id
+      ORDER BY m.id DESC;
+    `;
+    return res.json(rows);
+  } catch (err) {
+    console.error('[Neon Postgres] JOIN members AND tenants error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
 });
 
 // GET /api/tenants/:slug - SELECT single tenant with stats from Neon Postgres
 app.get('/api/tenants/:slug', async (req: Request, res: Response) => {
   const { slug } = req.params;
-  if (sql) {
-    try {
-      const rows = await sql`
-        SELECT 
-          t.id, 
-          t.slug, 
-          t.name, 
-          t.logo, 
-          t.color, 
-          t.archetype, 
-          t.class_id, 
-          t.issuer_id,
-          COUNT(m.id)::int as pass_count,
-          COALESCE(SUM(m.points)::int, 0) as total_points
-        FROM tenants t
-        LEFT JOIN members m ON m.tenant_id = t.id
-        WHERE t.slug = ${slug} 
-           OR t.id = ${slug} 
-           OR t.slug = ${slug.replace(/-bistro$/, '')}
-        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id
-        LIMIT 1;
-      `;
-
-      if (rows.length > 0) {
-        const r = rows[0];
-        return res.json({
-          id: r.id,
-          slug: r.slug,
-          name: r.name,
-          legalEntity: `${r.name} LLC`,
-          brandColor: r.color || '#ff5722',
-          logoUrl: r.logo,
-          archetype: r.archetype || 'loyalty',
-          classId: r.class_id,
-          plan: 'growth',
-          passLimit: 5000,
-          passCount: Number(r.pass_count || 0),
-          totalPoints: Number(r.total_points || 0),
-          status: 'active',
-        });
-      }
-    } catch (err) {
-      console.error('[Neon Postgres] GET /api/tenants/:slug error:', err);
-    }
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
-  const found = fallbackTenants.find((t) => t.slug === slug || t.id === slug) || fallbackTenants[0];
-  res.json({
-    id: found.id,
-    slug: found.slug,
-    name: found.name,
-    legalEntity: `${found.name} LLC`,
-    brandColor: found.color,
-    logoUrl: found.logo,
-    archetype: found.archetype,
-    classId: found.class_id,
-    plan: 'growth',
-    passLimit: 5000,
-    passCount: fallbackMembers.filter((m) => m.tenant_id === found.id).length,
-    totalPoints: fallbackMembers.filter((m) => m.tenant_id === found.id).reduce((acc, m) => acc + m.points, 0),
-    status: 'active',
-  });
+  try {
+    const rows = await sql`
+      SELECT 
+        t.id, 
+        t.slug, 
+        t.name, 
+        t.logo, 
+        t.color, 
+        t.archetype, 
+        t.class_id, 
+        t.issuer_id,
+        COUNT(m.id)::int as pass_count,
+        COALESCE(SUM(m.points)::int, 0) as total_points
+      FROM tenants t
+      LEFT JOIN members m ON m.tenant_id = t.id
+      WHERE t.slug = ${slug} 
+         OR t.id = ${slug} 
+         OR t.slug = ${slug.replace(/-bistro$/, '')}
+      GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id
+      LIMIT 1;
+    `;
+
+    if (rows.length > 0) {
+      const r = rows[0];
+      return res.json({
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        legalEntity: `${r.name} LLC`,
+        brandColor: r.color || '#ff5722',
+        logoUrl: r.logo,
+        archetype: r.archetype || 'loyalty',
+        classId: r.class_id,
+        plan: 'growth',
+        passLimit: 5000,
+        passCount: Number(r.pass_count || 0),
+        totalPoints: Number(r.total_points || 0),
+        status: 'active',
+      });
+    }
+
+    return res.status(404).json({ error: 'Tenant not found' });
+  } catch (err) {
+    console.error('[Neon Postgres] GET /api/tenants/:slug error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
 });
 
 // GET /api/tenants/:slug/members - SELECT FROM members JOIN tenants WHERE tenant slug
 app.get('/api/tenants/:slug/members', async (req: Request, res: Response) => {
   const { slug } = req.params;
-  if (sql) {
-    try {
-      const rows = await sql`
-        SELECT 
-          m.id,
-          m.tenant_id,
-          m.name as customer_name,
-          m.phone,
-          m.email,
-          m.member_id,
-          m.points,
-          m.balance_cents,
-          m.google_object_id,
-          t.name as store_name,
-          t.color as brand_color,
-          t.logo as logo_url,
-          t.class_id
-        FROM members m
-        JOIN tenants t ON m.tenant_id = t.id
-        WHERE t.slug = ${slug} 
-           OR t.id = ${slug} 
-           OR t.slug = ${slug.replace(/-bistro$/, '')}
-           OR (${slug.includes('banlis')} AND (t.slug LIKE '%banlis%' OR t.id LIKE '%banlis%'))
-        ORDER BY m.id DESC;
-      `;
-      if (rows && rows.length > 0) {
-        return res.json(rows);
-      }
-    } catch (err) {
-      console.error('[Neon Postgres] GET /api/tenants/:slug/members error:', err);
-    }
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
-  // Fallback: match tenant from fallbackTenants and return enrolled members
-  const found = fallbackTenants.find(
-    (t) =>
-      t.slug === slug ||
-      t.id === slug ||
-      t.slug === slug.replace(/-bistro$/, '') ||
-      (slug.includes('banlis') && (t.slug.includes('banlis') || t.id.includes('banlis')))
-  ) || fallbackTenants[0];
-
-  const matchedMembers = fallbackMembers
-    .filter(
-      (m) =>
-        m.tenant_id === found.id ||
-        m.tenant_id === found.slug ||
-        (slug.includes('banlis') && (m.tenant_id.includes('banlis') || found.id.includes('banlis')))
-    )
-    .map((m) => ({
-      id: m.id,
-      tenant_id: m.tenant_id,
-      customer_name: m.name,
-      phone: m.phone,
-      email: m.email,
-      member_id: m.member_id,
-      points: m.points,
-      balance_cents: m.balance_cents,
-      google_object_id: m.google_object_id,
-      store_name: found.name,
-      brand_color: found.color,
-      logo_url: found.logo,
-      class_id: found.class_id,
-    }));
-
-  res.json(matchedMembers);
+  try {
+    const rows = await sql`
+      SELECT 
+        m.id,
+        m.tenant_id,
+        m.name as customer_name,
+        m.phone,
+        m.email,
+        m.member_id,
+        m.points,
+        m.balance_cents,
+        m.google_object_id,
+        t.name as store_name,
+        t.color as brand_color,
+        t.logo as logo_url,
+        t.class_id
+      FROM members m
+      JOIN tenants t ON m.tenant_id = t.id
+      WHERE t.slug = ${slug} 
+         OR t.id = ${slug} 
+         OR t.slug = ${slug.replace(/-bistro$/, '')}
+         OR (${slug.includes('banlis')} AND (t.slug LIKE '%banlis%' OR t.id LIKE '%banlis%'))
+      ORDER BY m.id DESC;
+    `;
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('[Neon Postgres] GET /api/tenants/:slug/members error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
 });
 
 // PATCH /api/tenants/:slug - Update tenant customization settings, password, and status
@@ -963,27 +829,14 @@ app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
           message: 'Tenant updated in Neon Postgres',
         });
       }
+      return res.status(404).json({ error: 'Tenant not found' });
     } catch (err) {
       console.error('[Neon Postgres] PATCH /api/tenants/:slug error:', err);
+      return res.status(500).json({ error: 'Database connection failed' });
     }
   }
 
-  const found = fallbackTenants.find(
-    (t) => t.slug === slug || t.id === slug || t.slug === slug.replace(/-bistro$/, '')
-  );
-  if (found) {
-    if (status) found.status = status;
-    if (plan) found.plan = plan;
-    if (computedLimit) found.pass_limit = computedLimit;
-    if (name) found.name = name;
-    if (brandColor) found.color = brandColor;
-    if (logoUrl) found.logo = logoUrl;
-    if (ownerName) found.owner_name = ownerName;
-    if (ownerEmail) found.owner_email = ownerEmail;
-    return res.json({ success: true, tenant: found, message: 'Tenant updated in memory' });
-  }
-
-  res.json({ success: true, message: 'Tenant updated' });
+  return res.status(500).json({ error: 'Database not configured' });
 });
 
 // DELETE /api/tenants/:slug - Delete or Archive store tenant
@@ -1005,55 +858,47 @@ app.delete('/api/tenants/:slug', async (req: Request, res: Response) => {
       if (deletedRows.length > 0) {
         return res.json({ success: true, deleted: deletedRows[0], message: 'Merchant tenant deleted from Neon Postgres' });
       }
+      return res.status(404).json({ error: 'Tenant not found' });
     } catch (err) {
       console.error('[Neon Postgres] DELETE /api/tenants/:slug error:', err);
+      return res.status(500).json({ error: 'Database connection failed' });
     }
   }
 
-  const idx = fallbackTenants.findIndex(
-    (t) => t.slug === slug || t.id === slug || t.slug === slug.replace(/-bistro$/, '')
-  );
-  if (idx !== -1) {
-    const [removed] = fallbackTenants.splice(idx, 1);
-    return res.json({ success: true, deleted: removed, message: 'Merchant tenant deleted from memory' });
-  }
-
-  res.json({ success: true, message: 'Merchant tenant deleted' });
+  return res.status(500).json({ error: 'Database not configured' });
 });
 
 // POST /api/tenants/:slug/enroll - Customer Sign-up & Mint Google Wallet Pass
 app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
   const { slug } = req.params;
   const { name, email, phone } = req.body;
 
   let tenant: TenantRow | undefined;
 
-  if (sql) {
-    try {
-      const rows = await sql`
-        SELECT * FROM tenants 
-        WHERE slug = ${slug} 
-           OR id = ${slug} 
-           OR slug = ${slug.replace(/-bistro$/, '')}
-           OR slug = 'banlis' 
-           OR slug = 'banlis-bistro'
-        LIMIT 1;
-      `;
-      if (rows.length > 0) {
-        tenant = rows[0] as TenantRow;
-      } else {
-        const fallbackRows = await sql`SELECT * FROM tenants LIMIT 1;`;
-        if (fallbackRows.length > 0) {
-          tenant = fallbackRows[0] as TenantRow;
-        }
-      }
-    } catch (err) {
-      console.error('[Neon Postgres] Find tenant error:', err);
+  try {
+    const rows = await sql`
+      SELECT * FROM tenants 
+      WHERE slug = ${slug} 
+         OR id = ${slug} 
+         OR slug = ${slug.replace(/-bistro$/, '')}
+         OR slug = 'banlis' 
+         OR slug = 'banlis-bistro'
+      LIMIT 1;
+    `;
+    if (rows.length > 0) {
+      tenant = rows[0] as TenantRow;
     }
+  } catch (err) {
+    console.error('[Neon Postgres] Find tenant error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
   }
 
   if (!tenant) {
-    tenant = fallbackTenants.find((t) => t.slug === slug || t.id === slug) || fallbackTenants[0];
+    return res.status(404).json({ error: 'Tenant not found' });
   }
 
   console.log(`Enroll tenant slug=${slug} resolved id=${tenant.id}`);
@@ -1129,33 +974,20 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
   const memberPhone = phone || '';
   const memberEmail = email || '';
 
-  if (sql) {
-    try {
-      await sql`
-        INSERT INTO members (id, tenant_id, name, phone, email, member_id, points, balance_cents, google_object_id)
-        VALUES (${customerId}, ${tenant.id}, ${memberName}, ${memberPhone}, ${memberEmail}, ${customerId}, 100, 0, ${objectId});
-      `;
+  try {
+    await sql`
+      INSERT INTO members (id, tenant_id, name, phone, email, member_id, points, balance_cents, google_object_id)
+      VALUES (${customerId}, ${tenant.id}, ${memberName}, ${memberPhone}, ${memberEmail}, ${customerId}, 100, 0, ${objectId});
+    `;
 
-      const txId = `tx-${Date.now()}`;
-      await sql`
-        INSERT INTO point_transactions (id, member_id, change_amount, reason)
-        VALUES (${txId}, ${customerId}, 100, 'Welcome Bonus');
-      `;
-    } catch (err) {
-      console.error('[Neon Postgres] INSERT member error:', err);
-    }
-  } else {
-    fallbackMembers.push({
-      id: customerId,
-      tenant_id: tenant.id,
-      name: memberName,
-      phone: memberPhone,
-      email: memberEmail,
-      member_id: customerId,
-      points: 100,
-      balance_cents: 0,
-      google_object_id: objectId,
-    });
+    const txId = `tx-${Date.now()}`;
+    await sql`
+      INSERT INTO point_transactions (id, member_id, change_amount, reason)
+      VALUES (${txId}, ${customerId}, 100, 'Welcome Bonus');
+    `;
+  } catch (err) {
+    console.error('[Neon Postgres] INSERT member error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
   }
 
   res.status(201).json({
@@ -1184,62 +1016,58 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
 
 // PATCH /api/passes/:objectId/points - Update members.points & Insert point_transactions
 app.patch('/api/passes/:objectId/points', async (req: Request, res: Response) => {
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
   const { objectId } = req.params;
   const { deltaPoints, absolutePoints, reason } = req.body;
 
   let currentPoints = 100;
   let memberId = '889042';
 
-  if (sql) {
-    try {
-      const rows = await sql`
-        SELECT * FROM members 
-        WHERE google_object_id = ${objectId} OR id = ${objectId} OR member_id = ${objectId} 
-        LIMIT 1;
-      `;
+  try {
+    const rows = await sql`
+      SELECT * FROM members 
+      WHERE google_object_id = ${objectId} OR id = ${objectId} OR member_id = ${objectId} 
+      LIMIT 1;
+    `;
 
-      if (rows.length > 0) {
-        const m = rows[0];
-        memberId = m.id;
-        currentPoints = Number(m.points || 0);
-
-        let newPoints = currentPoints;
-        let changeAmount = 0;
-
-        if (typeof absolutePoints === 'number') {
-          newPoints = Math.max(0, absolutePoints);
-          changeAmount = newPoints - currentPoints;
-        } else if (typeof deltaPoints === 'number') {
-          changeAmount = deltaPoints;
-          newPoints = Math.max(0, currentPoints + deltaPoints);
-        }
-
-        await sql`
-          UPDATE members 
-          SET points = ${newPoints} 
-          WHERE id = ${memberId};
-        `;
-
-        const txId = `tx-${Date.now()}`;
-        await sql`
-          INSERT INTO point_transactions (id, member_id, change_amount, reason)
-          VALUES (${txId}, ${memberId}, ${changeAmount}, ${reason || 'POS Points Update'});
-        `;
-
-        currentPoints = newPoints;
-      }
-    } catch (err) {
-      console.error('[Neon Postgres] UPDATE points error:', err);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Member pass not found' });
     }
-  } else {
-    const pass = fallbackMembers.find((p) => p.google_object_id === objectId || p.id === objectId) || fallbackMembers[0];
-    memberId = pass.id;
+
+    const m = rows[0];
+    memberId = m.id;
+    currentPoints = Number(m.points || 0);
+
+    let newPoints = currentPoints;
+    let changeAmount = 0;
+
     if (typeof absolutePoints === 'number') {
-      pass.points = Math.max(0, absolutePoints);
+      newPoints = Math.max(0, absolutePoints);
+      changeAmount = newPoints - currentPoints;
     } else if (typeof deltaPoints === 'number') {
-      pass.points = Math.max(0, pass.points + deltaPoints);
+      changeAmount = deltaPoints;
+      newPoints = Math.max(0, currentPoints + deltaPoints);
     }
-    currentPoints = pass.points;
+
+    await sql`
+      UPDATE members 
+      SET points = ${newPoints} 
+      WHERE id = ${memberId};
+    `;
+
+    const txId = `tx-${Date.now()}`;
+    await sql`
+      INSERT INTO point_transactions (id, member_id, change_amount, reason)
+      VALUES (${txId}, ${memberId}, ${changeAmount}, ${reason || 'POS Points Update'});
+    `;
+
+    currentPoints = newPoints;
+  } catch (err) {
+    console.error('[Neon Postgres] UPDATE points error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
   }
 
   let tier = 'SILVER';
@@ -1261,25 +1089,28 @@ app.patch('/api/passes/:objectId/points', async (req: Request, res: Response) =>
 
 // GET /api/tenants/:id/billing - SaaS Billing & Limits
 app.get('/api/tenants/:id/billing', async (req: Request, res: Response) => {
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
   let storeName = 'Banlis Bistro & Dining';
   let passCount = 0;
 
-  if (sql) {
-    try {
-      const rows = await sql`
-        SELECT t.name, COUNT(m.id)::int as pass_count
-        FROM tenants t
-        LEFT JOIN members m ON m.tenant_id = t.id
-        WHERE t.id = ${req.params.id} OR t.slug = ${req.params.id}
-        GROUP BY t.id, t.name LIMIT 1;
-      `;
-      if (rows.length > 0) {
-        storeName = rows[0].name;
-        passCount = Number(rows[0].pass_count || 0);
-      }
-    } catch {
-      // Fallback
+  try {
+    const rows = await sql`
+      SELECT t.name, COUNT(m.id)::int as pass_count
+      FROM tenants t
+      LEFT JOIN members m ON m.tenant_id = t.id
+      WHERE t.id = ${req.params.id} OR t.slug = ${req.params.id}
+      GROUP BY t.id, t.name LIMIT 1;
+    `;
+    if (rows.length > 0) {
+      storeName = rows[0].name;
+      passCount = Number(rows[0].pass_count || 0);
     }
+  } catch (err) {
+    console.error('[Neon Postgres] GET billing error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
   }
 
   const planCosts = { starter: 49, growth: 149, scale: 399 };

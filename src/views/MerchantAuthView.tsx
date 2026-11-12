@@ -106,14 +106,18 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
         throw new Error('Please enter owner email.');
       }
 
-      const res = await fetch('/api/provision', {
+      if (!signupPassword || signupPassword.length < 8) {
+        throw new Error('Password must be at least 8 characters.');
+      }
+
+      const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: storeName.trim(),
           ownerName: ownerName.trim() || 'Store Manager',
           ownerEmail: ownerEmail.trim().toLowerCase(),
-          password: signupPassword || 'admin123',
+          password: signupPassword,
           brandColor,
           archetype,
           plan,
@@ -124,7 +128,8 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to register store.');
+        const serverError = data.error || data.detail || (data.code ? `Database error (${data.code})` : 'Unable to complete registration.');
+        throw new Error(serverError);
       }
 
       sounds.chime();

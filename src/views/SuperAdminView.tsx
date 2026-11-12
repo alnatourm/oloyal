@@ -173,7 +173,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
           name: newStoreName.trim(),
           legalEntity: newLegalEntity.trim() || `${newStoreName.trim()} LLC`,
           ownerName: newOwnerName.trim() || 'Store Manager',
-          ownerEmail: newOwnerEmail.trim() || undefined,
+          ownerEmail: newOwnerEmail.trim() || `admin@${newStoreName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'store'}.com`,
           password: newPassword.trim() || 'admin123',
           brandColor: newBrandColor,
           logoUrl: newLogoUrl.trim() || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',

@@ -58,27 +58,14 @@ export default async function handler(req: any, res: any) {
             createdAt: r.created_at || new Date().toISOString(),
           });
         }
+        return res.status(404).json({ error: 'Tenant not found' });
       } catch (err) {
         console.error('[Neon Postgres API] GET /api/tenants/[slug] error:', err);
+        return res.status(500).json({ error: 'Database connection failed' });
       }
     }
 
-    return res.status(200).json({
-      id: 't-banlis',
-      slug,
-      name: slug.toUpperCase(),
-      ownerName: 'Store Manager',
-      ownerEmail: `${slug}@oloyal.com`,
-      brandColor: '#ff5722',
-      logoUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
-      archetype: 'loyalty',
-      classId: '3388000000022258509.tenant_t-banlis_loyalty_class',
-      plan: 'growth',
-      passLimit: 5000,
-      passCount: 0,
-      totalPoints: 0,
-      status: 'Active',
-    });
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
   if (req.method === 'PATCH' || req.method === 'PUT') {
@@ -125,24 +112,14 @@ export default async function handler(req: any, res: any) {
             message: 'Tenant settings and status updated in Neon Postgres',
           });
         }
+        return res.status(404).json({ error: 'Tenant not found' });
       } catch (err: any) {
         console.error('[Neon Postgres API] PATCH /api/tenants/[slug] error:', err);
         return res.status(500).json({ error: `Failed to save tenant customization: ${err?.message || 'Database error'}` });
       }
     }
 
-    return res.status(200).json({
-      success: true,
-      tenant: {
-        id: 't-banlis',
-        slug,
-        name: name || slug,
-        brandColor: brandColor || '#ff5722',
-        logoUrl: logoUrl || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
-        archetype: archetype || 'loyalty',
-      },
-      message: 'Tenant customization saved',
-    });
+    return res.status(500).json({ error: 'Database not configured' });
   }
 
   res.setHeader('Allow', ['GET', 'PATCH', 'PUT']);
