@@ -1,4 +1,5 @@
 export type NavigationPath = 
+  | 'landing'
   | 'dashboard' 
   | 'pass-studio' 
   | 'pos-cashier' 
@@ -6,6 +7,7 @@ export type NavigationPath =
   | 'onboarding'
   | 'billing'
   | 'customer-join'
+  | 'merchant-auth'
   | 'super-admin'
   | 'telemetry-hardware' 
   | 'reports' 

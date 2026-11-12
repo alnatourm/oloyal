@@ -15,7 +15,7 @@ export interface TenantStore {
   plan: 'starter' | 'growth' | 'scale';
   passLimit: number;
   passCount: number;
-  status: 'Active' | 'Suspended' | 'Maintenance';
+  status: 'Active' | 'Pending Approval' | 'Suspended' | 'Maintenance';
   createdAt: string;
   apiKey?: string;
   baseEarnRate?: number;
@@ -31,7 +31,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState<'all' | 'starter' | 'growth' | 'scale'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Suspended' | 'Maintenance'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Pending Approval' | 'Active' | 'Suspended' | 'Maintenance'>('all');
 
   // Modals state
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
@@ -54,6 +54,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   const [newLogoUrl, setNewLogoUrl] = useState('');
   const [newArchetype, setNewArchetype] = useState<'loyalty' | 'gift' | 'ticket' | 'benefit'>('loyalty');
   const [newPlan, setNewPlan] = useState<'starter' | 'growth' | 'scale'>('growth');
+  const [newStatus, setNewStatus] = useState<'Active' | 'Pending Approval'>('Active');
   const [newEarnRate, setNewEarnRate] = useState<number>(10);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -61,7 +62,12 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   const [notice, setNotice] = useState<string | null>(null);
 
   // Management Modal Active Tab
-  const [manageTab, setManageTab] = useState<'overview' | 'settings' | 'google-class' | 'status'>('overview');
+  const [manageTab, setManageTab] = useState<'user-mgmt' | 'edit-info' | 'google-class' | 'danger'>('user-mgmt');
+  const [merchantNewPassword, setMerchantNewPassword] = useState('');
+  const [showPasswordText, setShowPasswordText] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchTenants = async () => {
     try {
@@ -80,9 +86,15 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
           archetype: t.archetype || 'loyalty',
           classId: t.classId || t.class_id,
           plan: t.plan || 'growth',
-          passLimit: t.passLimit || 5000,
+          passLimit: Number(t.passLimit || t.pass_limit || (t.plan === 'scale' ? 50000 : t.plan === 'starter' ? 500 : 5000)),
           passCount: Number(t.passCount || t.pass_count || 0),
-          status: t.status === 'suspended' ? 'Suspended' : 'Active',
+          status: t.status === 'Pending Approval' || t.status === 'pending'
+            ? 'Pending Approval'
+            : t.status === 'Suspended' || t.status === 'suspended'
+            ? 'Suspended'
+            : t.status === 'Maintenance'
+            ? 'Maintenance'
+            : 'Active',
           createdAt: t.createdAt || new Date().toISOString(),
           apiKey: `pk_live_${t.slug.replace(/-/g, '_')}_${Math.floor(100000 + Math.random() * 900000)}`,
           baseEarnRate: 10,
@@ -102,6 +114,44 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     sounds.click(1000, 0.02);
     setNotice(msg);
     setTimeout(() => setNotice(null), 3500);
+  };
+
+  // Approve a pending merchant & activate live issuing
+  const handleApproveTenant = async (tenant: TenantStore) => {
+    sounds.chime();
+    try {
+      const res = await fetch(`/api/tenants/${tenant.slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Active' }),
+      });
+      if (res.ok) {
+        await fetchTenants();
+        triggerNotice(`Approved & Activated Merchant "${tenant.name}" for ${tenant.plan.toUpperCase()} Package!`);
+      } else {
+        triggerNotice('Failed to update tenant status in database');
+      }
+    } catch (err) {
+      triggerNotice('Error connecting to database');
+    }
+  };
+
+  // Reject / Suspend a merchant application
+  const handleRejectTenant = async (tenant: TenantStore) => {
+    sounds.click(400, 0.05);
+    try {
+      const res = await fetch(`/api/tenants/${tenant.slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Suspended' }),
+      });
+      if (res.ok) {
+        await fetchTenants();
+        triggerNotice(`Application for "${tenant.name}" has been Rejected/Suspended.`);
+      }
+    } catch (err) {
+      triggerNotice('Error connecting to database');
+    }
   };
 
   // Handle Provisioning New Merchant into Neon Postgres DB
@@ -129,12 +179,13 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
           logoUrl: newLogoUrl.trim() || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
           archetype: newArchetype,
           plan: newPlan,
+          status: newStatus,
         }),
       });
 
       if (res.ok) {
         await fetchTenants(); // Refetch directly from DB!
-        triggerNotice(`Successfully Provisioned Merchant "${newStoreName.trim()}" in Neon Postgres!`);
+        triggerNotice(`Successfully Provisioned Merchant "${newStoreName.trim()}" (${newStatus})!`);
       } else {
         const err = await res.json().catch(() => ({}));
         triggerNotice(`Error: ${err.error || 'Failed to provision merchant'}`);
@@ -156,15 +207,37 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
       setNewLogoUrl('');
       setNewArchetype('loyalty');
       setNewPlan('growth');
+      setNewStatus('Active');
     }
   };
 
   // Handle Updates to Managed Tenant
-  const handleUpdateTenant = (updated: TenantStore) => {
+  const handleUpdateTenant = async (updated: TenantStore) => {
     sounds.click(900, 0.02);
     setTenants(tenants.map((t) => (t.id === updated.id ? updated : t)));
     setManagingTenant(updated);
-    triggerNotice(`Updated Settings for ${updated.name}`);
+
+    try {
+      await fetch(`/api/tenants/${updated.slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: updated.name,
+          legalEntity: updated.legalEntity,
+          ownerName: updated.ownerName,
+          ownerEmail: updated.ownerEmail,
+          brandColor: updated.brandColor,
+          logoUrl: updated.logoUrl,
+          archetype: updated.archetype,
+          status: updated.status,
+          plan: updated.plan,
+          passLimit: updated.passLimit,
+        }),
+      });
+      triggerNotice(`Updated Settings & Status for ${updated.name}`);
+    } catch (err) {
+      console.error('Update tenant error:', err);
+    }
   };
 
   // Handle Regenerate API Key
@@ -184,12 +257,78 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     triggerNotice('New Secret API Key Generated & HMAC Hash Updated!');
   };
 
-  // Handle Delete Tenant
-  const handleDeleteTenant = (tenantId: string, storeName: string) => {
+  // Handle Delete Tenant with backend DB persistence
+  const handleDeleteTenant = async (tenantId: string, slug: string, storeName: string) => {
     sounds.click(400, 0.05);
-    setTenants(tenants.filter((t) => t.id !== tenantId));
-    setManagingTenant(null);
-    triggerNotice(`Archived Merchant "${storeName}" & De-provisioned LoyaltyClass`);
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/tenants/${slug}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTenants((prev) => prev.filter((t) => t.id !== tenantId && t.slug !== slug));
+        setManagingTenant(null);
+        triggerNotice(`Permanently deleted merchant "${storeName}" & archived records.`);
+      } else {
+        triggerNotice('Failed to delete merchant from database');
+      }
+    } catch {
+      triggerNotice('Error connecting to database');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Handle Update Merchant Password
+  const handleUpdatePassword = async (slug: string, newPw: string) => {
+    if (!newPw || newPw.trim().length < 4) {
+      triggerNotice('Password must be at least 4 characters');
+      return;
+    }
+    sounds.click();
+    setIsSavingPassword(true);
+    try {
+      const res = await fetch(`/api/tenants/${slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPw.trim() }),
+      });
+      if (res.ok) {
+        triggerNotice(`Login password successfully updated for ${managingTenant?.name}!`);
+        setMerchantNewPassword('');
+      } else {
+        triggerNotice('Failed to update password');
+      }
+    } catch {
+      triggerNotice('Error connecting to server');
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
+  // Handle Toggle Block / Suspend User
+  const handleToggleBlock = async (tenant: TenantStore) => {
+    const targetStatus = tenant.status === 'Suspended' ? 'Active' : 'Suspended';
+    sounds.click(targetStatus === 'Suspended' ? 400 : 800, 0.04);
+    try {
+      const res = await fetch(`/api/tenants/${tenant.slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: targetStatus }),
+      });
+      if (res.ok) {
+        const updated: TenantStore = { ...tenant, status: targetStatus as any };
+        setTenants((prev) => prev.map((t) => (t.id === tenant.id ? updated : t)));
+        setManagingTenant(updated);
+        triggerNotice(
+          targetStatus === 'Suspended'
+            ? `Blocked merchant "${tenant.name}" (${tenant.ownerEmail}). Login disabled.`
+            : `Unblocked merchant "${tenant.name}". Account is now Active!`
+        );
+      } else {
+        triggerNotice('Failed to update status');
+      }
+    } catch {
+      triggerNotice('Error connecting to database');
+    }
   };
 
   // Filtered List
@@ -209,7 +348,9 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   // Calculate live stats
   const totalPassesMinted = tenants.reduce((acc, t) => acc + t.passCount, 0);
   const activeCount = tenants.filter((t) => t.status === 'Active').length;
+  const pendingTenants = tenants.filter((t) => t.status === 'Pending Approval');
   const totalMRR = tenants.reduce((acc, t) => {
+    if (t.status === 'Suspended') return acc;
     const costs = { starter: 49, growth: 149, scale: 399 };
     return acc + (costs[t.plan] || 149);
   }, 0);
@@ -263,6 +404,49 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
           </button>
         </div>
       </div>
+
+      {/* Pending Approval Alert Bar */}
+      {pendingTenants.length > 0 && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-500/40 tactile-card flex flex-wrap items-center justify-between gap-4 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold animate-pulse shadow-md shrink-0">
+              <span className="material-symbols-outlined text-[22px]">hourglass_top</span>
+            </div>
+            <div>
+              <h4 className="font-bold text-on-surface text-[15px] flex items-center gap-2">
+                <span>{pendingTenants.length} New Merchant Registration{pendingTenants.length > 1 ? 's' : ''} Awaiting Package Approval</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-[11px] font-bold">
+                  Action Required
+                </span>
+              </h4>
+              <p className="text-[12px] text-on-surface-variant">
+                {pendingTenants.map((t) => `${t.name} applied for ${t.plan.toUpperCase()} Package ($${t.plan === 'scale' ? 399 : t.plan === 'starter' ? 49 : 149}/mo)`).join(' • ')}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                sounds.click();
+                setStatusFilter('Pending Approval');
+              }}
+              className="px-4 py-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm font-bold tactile-btn flex items-center gap-1.5"
+            >
+              <span>Filter Pending ({pendingTenants.length})</span>
+              <span className="material-symbols-outlined text-[16px]">filter_alt</span>
+            </button>
+            {pendingTenants.length === 1 && (
+              <button
+                onClick={() => handleApproveTenant(pendingTenants[0])}
+                className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-label-sm text-label-sm font-bold tactile-glow flex items-center gap-1.5 shadow-md"
+              >
+                <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                <span>Approve {pendingTenants[0].name}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Platform Level Metric Pods */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -370,22 +554,37 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
           {/* Status Filter */}
           <div className="flex items-center gap-1.5 bg-surface-container p-1 rounded-full tactile-deboss">
             <span className="text-[11px] uppercase font-bold text-outline px-2">Status:</span>
-            {(['all', 'Active', 'Suspended', 'Maintenance'] as const).map((st) => (
-              <button
-                key={st}
-                onClick={() => {
-                  sounds.click(900, 0.01);
-                  setStatusFilter(st);
-                }}
-                className={`px-3 py-1 rounded-full text-[12px] font-bold uppercase transition-all ${
-                  statusFilter === st
-                    ? 'bg-[#ff5722] text-white shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
+            {(['all', 'Pending Approval', 'Active', 'Suspended', 'Maintenance'] as const).map((st) => {
+              const pendingCount = tenants.filter((t) => t.status === 'Pending Approval').length;
+              const label =
+                st === 'all'
+                  ? 'All'
+                  : st === 'Pending Approval'
+                  ? `Pending (${pendingCount})`
+                  : st;
+
+              return (
+                <button
+                  key={st}
+                  onClick={() => {
+                    sounds.click(900, 0.01);
+                    setStatusFilter(st);
+                  }}
+                  className={`px-3 py-1 rounded-full text-[12px] font-bold uppercase transition-all flex items-center gap-1.5 ${
+                    statusFilter === st
+                      ? 'bg-[#ff5722] text-white shadow-sm'
+                      : st === 'Pending Approval' && pendingCount > 0
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-1 ring-amber-500/50'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  {st === 'Pending Approval' && pendingCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                  )}
+                  <span>{label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -505,18 +704,22 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-label-sm text-label-sm font-bold ${
                             t.status === 'Active'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : t.status === 'Pending Approval'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-1 ring-amber-500/40'
                               : t.status === 'Suspended'
                               ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
                               t.status === 'Active'
                                 ? 'bg-emerald-500 animate-pulse'
+                                : t.status === 'Pending Approval'
+                                ? 'bg-amber-500 animate-ping'
                                 : t.status === 'Suspended'
                                 ? 'bg-red-500'
-                                : 'bg-amber-500'
+                                : 'bg-blue-500'
                             }`}
                           ></span>
                           {t.status}
@@ -524,19 +727,37 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {t.status === 'Pending Approval' && (
+                            <>
+                              <button
+                                onClick={() => handleApproveTenant(t)}
+                                className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-label-sm text-label-sm font-bold shadow-md flex items-center gap-1 active:scale-95 transition-all tactile-glow"
+                                title="Approve merchant and activate Google Wallet pass issuing"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                                <span>Approve</span>
+                              </button>
+                              <button
+                                onClick={() => handleRejectTenant(t)}
+                                className="px-2.5 py-1.5 rounded-full bg-surface-container hover:bg-red-600 hover:text-white text-on-surface-variant font-label-sm text-label-sm font-semibold transition-all tactile-btn"
+                                title="Reject registration"
+                              >
+                                <span>Reject</span>
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => {
                               sounds.click(1000, 0.02);
-                              if (onSelectTenantDashboard) {
-                                onSelectTenantDashboard(t.slug);
-                              } else {
-                                setManagingTenant(t);
-                                setManageTab('overview');
-                              }
+                              setManagingTenant(t);
+                              setManageTab('user-mgmt');
+                              setMerchantNewPassword('');
+                              setDeleteConfirmInput('');
                             }}
-                            className="px-4 py-1.5 rounded-full bg-[#ff5722] text-white font-label-sm text-label-sm font-bold tactile-glow flex items-center gap-1.5 ml-auto hover:brightness-105 active:scale-95"
+                            className="px-4 py-1.5 rounded-full bg-[#ff5722] text-white font-label-sm text-label-sm font-bold tactile-glow flex items-center gap-1.5 hover:brightness-105 active:scale-95 shadow-sm"
+                            title="Manage User, Reset Password, Edit Info, Block/Unblock, or Delete"
                           >
-                            <span className="material-symbols-outlined text-[16px]">dashboard</span>
+                            <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
                             <span>Manage</span>
                           </button>
                         </div>
@@ -648,11 +869,11 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                 </div>
               </div>
 
-              {/* Program Archetype & Plan */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Program Archetype, Plan & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block font-label-md text-label-md font-bold text-on-surface mb-1.5">
-                    Google Wallet Pass Archetype
+                    Wallet Pass Archetype
                   </label>
                   <select
                     value={newArchetype}
@@ -668,16 +889,30 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
 
                 <div>
                   <label className="block font-label-md text-label-md font-bold text-on-surface mb-1.5">
-                    SaaS Subscription Plan Tier
+                    SaaS Package Tier
                   </label>
                   <select
                     value={newPlan}
                     onChange={(e) => setNewPlan(e.target.value as any)}
                     className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface font-body-sm focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
                   >
-                    <option value="starter">Starter Plan ($49/mo - 500 passes)</option>
-                    <option value="growth">Growth Plan ($149/mo - 5,000 passes)</option>
-                    <option value="scale">Scale Enterprise ($399/mo - 50,000 passes)</option>
+                    <option value="starter">Starter ($49/mo - 500 passes)</option>
+                    <option value="growth">Growth ($149/mo - 5,000 passes)</option>
+                    <option value="scale">Scale ($399/mo - 50,000 passes)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-label-md text-label-md font-bold text-on-surface mb-1.5">
+                    Initial Status
+                  </label>
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value as any)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface font-body-sm focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
+                  >
+                    <option value="Active">Active (Instant Issuing)</option>
+                    <option value="Pending Approval">Pending Approval</option>
                   </select>
                 </div>
               </div>
@@ -822,35 +1057,35 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
             </div>
 
             {/* Management Tabs Navigation */}
-            <div className="flex border-b border-surface-container-highest bg-surface-container px-6 pt-2 gap-2">
+            <div className="flex border-b border-surface-container-highest bg-surface-container px-6 pt-2 gap-2 overflow-x-auto">
               <button
                 onClick={() => {
                   sounds.click(900, 0.01);
-                  setManageTab('overview');
+                  setManageTab('user-mgmt');
                 }}
-                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
-                  manageTab === 'overview'
+                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 shrink-0 ${
+                  manageTab === 'user-mgmt'
                     ? 'border-[#ff5722] text-[#ff5722] bg-surface-container-low'
                     : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                <span className="material-symbols-outlined text-[18px]">info</span>
-                <span>Overview &amp; API Keys</span>
+                <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
+                <span>User &amp; Password</span>
               </button>
 
               <button
                 onClick={() => {
                   sounds.click(900, 0.01);
-                  setManageTab('settings');
+                  setManageTab('edit-info');
                 }}
-                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
-                  manageTab === 'settings'
+                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 shrink-0 ${
+                  manageTab === 'edit-info'
                     ? 'border-[#ff5722] text-[#ff5722] bg-surface-container-low'
                     : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                <span className="material-symbols-outlined text-[18px]">edit</span>
-                <span>Store Info &amp; Branding</span>
+                <span className="material-symbols-outlined text-[18px]">edit_note</span>
+                <span>Edit Information</span>
               </button>
 
               <button
@@ -858,158 +1093,315 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                   sounds.click(900, 0.01);
                   setManageTab('google-class');
                 }}
-                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
+                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 shrink-0 ${
                   manageTab === 'google-class'
                     ? 'border-[#ff5722] text-[#ff5722] bg-surface-container-low'
                     : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 <span className="material-symbols-outlined text-[18px]">wallet</span>
-                <span>Google Wallet Class</span>
+                <span>Google Wallet &amp; Keys</span>
               </button>
 
               <button
                 onClick={() => {
                   sounds.click(900, 0.01);
-                  setManageTab('status');
+                  setManageTab('danger');
                 }}
-                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
-                  manageTab === 'status'
-                    ? 'border-[#ff5722] text-[#ff5722] bg-surface-container-low'
-                    : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                className={`px-4 py-2.5 font-label-md text-label-md font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 shrink-0 ${
+                  manageTab === 'danger'
+                    ? 'border-red-600 text-red-600 bg-surface-container-low'
+                    : 'border-transparent text-on-surface-variant hover:text-red-500'
                 }`}
               >
-                <span className="material-symbols-outlined text-[18px]">shield</span>
-                <span>Status &amp; Actions</span>
+                <span className="material-symbols-outlined text-[18px]">delete_forever</span>
+                <span>Delete Store</span>
               </button>
             </div>
 
             {/* Tab Body */}
             <div className="p-6 overflow-y-auto space-y-6">
-              {/* TAB 1: OVERVIEW & API KEYS */}
-              {manageTab === 'overview' && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-xl bg-surface-container tactile-deboss flex flex-col justify-between">
-                      <span className="text-[11px] font-bold uppercase text-outline">Merchant Tenant ID</span>
-                      <span className="font-mono font-bold text-on-surface text-body-md mt-1">
-                        {managingTenant.id}
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-surface-container tactile-deboss flex flex-col justify-between">
-                      <span className="text-[11px] font-bold uppercase text-outline">Pass Limit &amp; Usage</span>
-                      <span className="font-mono font-bold text-[#ff5722] text-body-md mt-1">
-                        {managingTenant.passCount.toLocaleString()} / {managingTenant.passLimit.toLocaleString()} Passes
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Secret API Key Pod */}
-                  <div className="p-5 rounded-xl bg-surface-container border border-surface-container-highest space-y-3">
-                    <div className="flex items-center justify-between">
+              {/* TAB 1: USER MANAGEMENT, PASSWORDS & BLOCK USER */}
+              {manageTab === 'user-mgmt' && (
+                <div className="space-y-6">
+                  {/* Account Identity & Status Card */}
+                  <div className="p-5 rounded-2xl bg-surface-container border border-surface-container-highest space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <h4 className="font-headline-sm text-headline-sm font-bold text-on-surface">
-                          Merchant Secret API Key
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-outline">
+                          Merchant User Profile
+                        </span>
+                        <h4 className="font-headline-sm text-lg font-bold text-on-surface mt-0.5">
+                          {managingTenant.ownerName}
                         </h4>
-                        <p className="text-[12px] text-on-surface-variant">
-                          Used by merchant POS terminals to authenticate points REST webhooks
+                        <p className="text-xs text-on-surface-variant font-mono mt-0.5">
+                          {managingTenant.ownerEmail} • Slug: /{managingTenant.slug}
                         </p>
                       </div>
-                      <button
-                        onClick={() => handleRegenerateKey(managingTenant.id)}
-                        className="px-3.5 py-1.5 rounded-full bg-surface-container-high text-on-surface font-label-sm text-label-sm font-bold tactile-btn flex items-center gap-1.5"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">key</span>
-                        <span>Regenerate Key</span>
-                      </button>
+
+                      <div className="flex items-center gap-2">
+                        {onSelectTenantDashboard && (
+                          <button
+                            onClick={() => {
+                              sounds.click(1000, 0.02);
+                              onSelectTenantDashboard(managingTenant.slug);
+                            }}
+                            className="px-4 py-2 rounded-full bg-surface-container-high hover:bg-[#ff5722] hover:text-white text-on-surface font-label-sm text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                            title="Launch merchant dashboard view in this store context"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                            <span>Open Store Dashboard</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={managingTenant.apiKey || 'pk_live_sample_key_994821'}
-                        className="flex-1 px-4 py-2 rounded-xl bg-surface-container-lowest font-mono text-[13px] text-on-surface border border-surface-container-highest select-all"
-                      />
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(managingTenant.apiKey || '');
-                          triggerNotice('API Key copied to clipboard!');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-[#ff5722] text-white font-label-sm text-label-sm font-bold tactile-glow"
-                      >
-                        Copy
-                      </button>
+                    {/* Status & Blocking Controls */}
+                    <div className="p-4 rounded-xl bg-surface-container-low border border-surface-container-highest flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 ${
+                            managingTenant.status === 'Suspended'
+                              ? 'bg-red-600'
+                              : managingTenant.status === 'Pending Approval'
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-600'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[20px]">
+                            {managingTenant.status === 'Suspended'
+                              ? 'block'
+                              : managingTenant.status === 'Pending Approval'
+                              ? 'hourglass_top'
+                              : 'check_circle'}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-on-surface flex items-center gap-2">
+                            <span>Account Status: {managingTenant.status}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                managingTenant.status === 'Suspended'
+                                  ? 'bg-red-100 text-red-800'
+                                  : managingTenant.status === 'Pending Approval'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {managingTenant.status === 'Suspended' ? 'Blocked' : 'Active'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-on-surface-variant">
+                            {managingTenant.status === 'Suspended'
+                              ? 'This user is currently BLOCKED. Login access is disabled and wallet pass issuing is halted.'
+                              : managingTenant.status === 'Pending Approval'
+                              ? 'Registration submitted. Awaiting Super Admin package approval.'
+                              : 'Active merchant account. Authorized to access store dashboard and issue passes.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {managingTenant.status === 'Pending Approval' ? (
+                          <button
+                            onClick={async () => {
+                              await handleApproveTenant(managingTenant);
+                              setManagingTenant({ ...managingTenant, status: 'Active' });
+                            }}
+                            className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md flex items-center gap-1.5 transition-all"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                            <span>Approve User</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleBlock(managingTenant)}
+                            className={`px-4 py-2 rounded-full font-bold text-xs transition-all flex items-center gap-1.5 shadow-sm ${
+                              managingTenant.status === 'Suspended'
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                : 'bg-red-600 hover:bg-red-700 text-white'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              {managingTenant.status === 'Suspended' ? 'lock_open' : 'block'}
+                            </span>
+                            <span>
+                              {managingTenant.status === 'Suspended' ? 'Unblock User' : 'Block User'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* POS Webhook Endpoint */}
-                  <div className="p-4 rounded-xl bg-surface-container tactile-deboss space-y-2">
-                    <span className="text-[11px] font-bold uppercase text-outline">Real-Time POS Webhook Endpoint</span>
-                    <p className="font-mono text-[12px] text-on-surface bg-surface-container-lowest p-2.5 rounded-lg border border-surface-container-highest">
-                      PATCH https://ais-dev-v6nnfts2ifjcwfsonsfq2o-86957709213.us-west1.run.app/api/passes/:objectId/points
-                    </p>
+                  {/* Password Management & Reset Card */}
+                  <div className="p-5 rounded-2xl bg-surface-container border border-surface-container-highest space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-[#ff5722]/15 text-[#ff5722] flex items-center justify-center font-bold">
+                          <span className="material-symbols-outlined text-[20px]">key</span>
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-on-surface text-sm">
+                            Merchant Password Management
+                          </h4>
+                          <p className="text-xs text-on-surface-variant">
+                            Reset or assign a new login password for this merchant user
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-mono text-[#ff5722] font-semibold bg-[#ff5722]/10 px-2.5 py-1 rounded-full">
+                        Default: admin123
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface mb-1">
+                          New Merchant Password
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <input
+                              type={showPasswordText ? 'text' : 'password'}
+                              value={merchantNewPassword}
+                              onChange={(e) => setMerchantNewPassword(e.target.value)}
+                              placeholder="Enter new password (min. 4 characters)..."
+                              className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-surface text-on-surface text-xs border border-surface-container-highest focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50 font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPasswordText(!showPasswordText)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                {showPasswordText ? 'visibility_off' : 'visibility'}
+                              </span>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const rand = 'pass_' + Math.random().toString(36).substring(2, 8);
+                              setMerchantNewPassword(rand);
+                              setShowPasswordText(true);
+                              sounds.click();
+                            }}
+                            className="px-3 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold transition-all"
+                            title="Generate a random password"
+                          >
+                            Generate
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMerchantNewPassword('admin123');
+                              sounds.click();
+                            }}
+                            className="px-3 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold transition-all"
+                            title="Reset to default admin123"
+                          >
+                            Set admin123
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const creds = `PassLoyal OS Merchant Login\nURL: ${window.location.origin}\nIdentifier: ${managingTenant.ownerEmail}\nSlug: ${managingTenant.slug}\nPassword: ${merchantNewPassword || 'admin123'}`;
+                            navigator.clipboard.writeText(creds);
+                            triggerNotice('Copied Merchant Login Credentials to Clipboard!');
+                          }}
+                          className="px-3.5 py-2 rounded-full bg-surface-container-lowest hover:bg-surface-container-high text-on-surface text-xs font-bold border border-surface-container-highest flex items-center gap-1.5 transition-all"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                          <span>Copy Login Credentials</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isSavingPassword || !merchantNewPassword.trim()}
+                          onClick={() => handleUpdatePassword(managingTenant.slug, merchantNewPassword)}
+                          className="px-5 py-2 rounded-full bg-[#ff5722] disabled:opacity-50 text-white font-bold text-xs shadow-md hover:brightness-105 active:scale-95 transition-all flex items-center gap-1.5"
+                        >
+                          {isSavingPassword ? (
+                            <>
+                              <span className="material-symbols-outlined text-[16px] animate-spin">refresh</span>
+                              <span>Saving...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="material-symbols-outlined text-[16px]">save</span>
+                              <span>Update Password</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 2: STORE INFO & BRANDING */}
-              {manageTab === 'settings' && (
+              {/* TAB 2: EDIT STORE INFORMATION */}
+              {manageTab === 'edit-info' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[12px] font-bold text-on-surface mb-1">Store Name</label>
+                      <label className="block text-xs font-bold text-on-surface mb-1">Store / Business Name</label>
                       <input
                         type="text"
                         value={managingTenant.name}
                         onChange={(e) =>
                           handleUpdateTenant({ ...managingTenant, name: e.target.value })
                         }
-                        className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface text-body-sm"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
                       />
                     </div>
                     <div>
-                      <label className="block text-[12px] font-bold text-on-surface mb-1">Legal Entity</label>
+                      <label className="block text-xs font-bold text-on-surface mb-1">Legal Entity</label>
                       <input
                         type="text"
                         value={managingTenant.legalEntity}
                         onChange={(e) =>
                           handleUpdateTenant({ ...managingTenant, legalEntity: e.target.value })
                         }
-                        className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface text-body-sm"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[12px] font-bold text-on-surface mb-1">Owner Name</label>
+                      <label className="block text-xs font-bold text-on-surface mb-1">Owner Name</label>
                       <input
                         type="text"
                         value={managingTenant.ownerName}
                         onChange={(e) =>
                           handleUpdateTenant({ ...managingTenant, ownerName: e.target.value })
                         }
-                        className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface text-body-sm"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
                       />
                     </div>
                     <div>
-                      <label className="block text-[12px] font-bold text-on-surface mb-1">Contact Email</label>
+                      <label className="block text-xs font-bold text-on-surface mb-1">Owner Work Email</label>
                       <input
                         type="email"
                         value={managingTenant.ownerEmail}
                         onChange={(e) =>
                           handleUpdateTenant({ ...managingTenant, ownerEmail: e.target.value })
                         }
-                        className="w-full px-4 py-2.5 rounded-xl bg-surface-container tactile-deboss text-on-surface text-body-sm"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-[#ff5722]/50"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[12px] font-bold text-on-surface mb-1">Brand Hex Color</label>
+                      <label className="block text-xs font-bold text-on-surface mb-1">Brand Accent Color</label>
                       <div className="flex items-center gap-3">
                         <input
                           type="color"
@@ -1017,7 +1409,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                           onChange={(e) =>
                             handleUpdateTenant({ ...managingTenant, brandColor: e.target.value })
                           }
-                          className="w-10 h-10 rounded-xl cursor-pointer bg-surface-container p-1 border-0"
+                          className="w-10 h-10 rounded-xl cursor-pointer bg-surface p-1 border border-surface-container-highest"
                         />
                         <input
                           type="text"
@@ -1025,13 +1417,13 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                           onChange={(e) =>
                             handleUpdateTenant({ ...managingTenant, brandColor: e.target.value })
                           }
-                          className="w-full px-4 py-2.5 rounded-xl bg-surface-container font-mono text-body-sm uppercase"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest font-mono text-xs uppercase"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[12px] font-bold text-on-surface mb-1">SaaS Plan</label>
+                      <label className="block text-xs font-bold text-on-surface mb-1">SaaS Plan Package</label>
                       <select
                         value={managingTenant.plan}
                         onChange={(e) => {
@@ -1043,7 +1435,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                             passLimit: limits[p as keyof typeof limits],
                           });
                         }}
-                        className="w-full px-4 py-2.5 rounded-xl bg-surface-container font-body-sm text-on-surface"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-xs text-on-surface focus:outline-none"
                       >
                         <option value="starter">Starter Plan ($49/mo - 500 Limit)</option>
                         <option value="growth">Growth Plan ($149/mo - 5,000 Limit)</option>
@@ -1052,21 +1444,61 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface mb-1">Pass Card Archetype</label>
+                      <select
+                        value={managingTenant.archetype}
+                        onChange={(e) =>
+                          handleUpdateTenant({ ...managingTenant, archetype: e.target.value as any })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-xs text-on-surface focus:outline-none"
+                      >
+                        <option value="loyalty">Loyalty Club</option>
+                        <option value="gift">Digital Gift Card</option>
+                        <option value="ticket">Event Ticket Pass</option>
+                        <option value="benefit">VIP Membership Pass</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface mb-1">Pass Issuing Limit</label>
+                      <input
+                        type="number"
+                        value={managingTenant.passLimit}
+                        onChange={(e) =>
+                          handleUpdateTenant({ ...managingTenant, passLimit: Number(e.target.value) || 1000 })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-on-surface text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="block text-[12px] font-bold text-on-surface mb-1">Logo Asset URL</label>
+                    <label className="block text-xs font-bold text-on-surface mb-1">Logo Asset URL</label>
                     <input
                       type="url"
                       value={managingTenant.logoUrl}
                       onChange={(e) =>
                         handleUpdateTenant({ ...managingTenant, logoUrl: e.target.value })
                       }
-                      className="w-full px-4 py-2.5 rounded-xl bg-surface-container text-body-sm text-on-surface"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-surface-container-highest text-xs text-on-surface"
                     />
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => triggerNotice(`Saved Information for ${managingTenant.name}!`)}
+                      className="px-5 py-2.5 rounded-full bg-[#ff5722] text-white font-bold text-xs shadow-md hover:brightness-105 active:scale-95 transition-all flex items-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">save</span>
+                      <span>Save Information</span>
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* TAB 3: GOOGLE WALLET CLASS */}
+              {/* TAB 3: GOOGLE WALLET & API KEYS */}
               {manageTab === 'google-class' && (
                 <div className="space-y-4">
                   <div className="p-5 rounded-xl bg-surface-container border border-surface-container-highest space-y-4">
@@ -1076,18 +1508,18 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                           cloud_done
                         </span>
                         <div>
-                          <h4 className="font-bold text-on-surface">Google Wallet API Class State</h4>
-                          <p className="text-[12px] text-on-surface-variant font-mono">
+                          <h4 className="font-bold text-on-surface text-sm">Google Wallet API Class State</h4>
+                          <p className="text-xs text-on-surface-variant font-mono">
                             {managingTenant.classId}
                           </p>
                         </div>
                       </div>
-                      <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-label-sm text-label-sm font-bold">
+                      <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold text-xs">
                         ACTIVE ON GOOGLE SERVERS
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 text-[12px] font-mono">
+                    <div className="grid grid-cols-2 gap-3 text-xs font-mono">
                       <div className="p-3 rounded-lg bg-surface-container-lowest">
                         <span className="text-outline block text-[10px] uppercase font-bold">Issuer ID</span>
                         <span className="text-on-surface font-bold">3388000000022258509</span>
@@ -1101,76 +1533,102 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                     <div className="pt-2">
                       <button
                         onClick={() => triggerNotice('Force Synced LoyaltyClass Template with Google REST API!')}
-                        className="px-5 py-2.5 rounded-full bg-surface-container-high text-on-surface font-label-sm text-label-sm font-bold tactile-btn flex items-center gap-2 hover:text-[#ff5722]"
+                        className="px-5 py-2.5 rounded-full bg-surface-container-high text-on-surface font-bold text-xs tactile-btn flex items-center gap-2 hover:text-[#ff5722]"
                       >
                         <span className="material-symbols-outlined text-[18px]">sync</span>
                         <span>Force Re-Sync Google LoyaltyClass</span>
                       </button>
                     </div>
                   </div>
+
+                  {/* Secret API Key Pod */}
+                  <div className="p-5 rounded-xl bg-surface-container border border-surface-container-highest space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-on-surface text-sm">Merchant Secret API Key</h4>
+                        <p className="text-xs text-on-surface-variant">
+                          Used by POS terminals to authenticate points REST webhooks
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleRegenerateKey(managingTenant.id)}
+                        className="px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface font-bold text-xs tactile-btn flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">key</span>
+                        <span>Regenerate Key</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={managingTenant.apiKey || 'pk_live_sample_key_994821'}
+                        className="flex-1 px-3.5 py-2 rounded-xl bg-surface-container-lowest font-mono text-xs text-on-surface border border-surface-container-highest select-all"
+                      />
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(managingTenant.apiKey || '');
+                          triggerNotice('API Key copied to clipboard!');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-[#ff5722] text-white font-bold text-xs tactile-glow"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* TAB 4: STATUS & ACTIONS */}
-              {manageTab === 'status' && (
-                <div className="space-y-6">
-                  {/* Status Switcher */}
-                  <div className="p-5 rounded-xl bg-surface-container space-y-3">
-                    <h4 className="font-bold text-on-surface">Store Account Operating Status</h4>
-                    <div className="flex gap-3">
-                      {(['Active', 'Suspended', 'Maintenance'] as const).map((st) => (
-                        <button
-                          key={st}
-                          onClick={() => handleUpdateTenant({ ...managingTenant, status: st })}
-                          className={`flex-1 py-2.5 rounded-xl font-label-md text-label-md font-bold uppercase transition-all ${
-                            managingTenant.status === st
-                              ? st === 'Active'
-                                ? 'bg-emerald-600 text-white shadow-md'
-                                : st === 'Suspended'
-                                ? 'bg-red-600 text-white shadow-md'
-                                : 'bg-amber-600 text-white shadow-md'
-                              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface tactile-btn'
-                          }`}
-                        >
-                          {st}
-                        </button>
-                      ))}
+              {/* TAB 4: DANGER ZONE & DELETE STORE */}
+              {manageTab === 'danger' && (
+                <div className="space-y-5">
+                  <div className="p-5 rounded-2xl bg-red-950/15 border border-red-500/40 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center font-bold shrink-0">
+                        <span className="material-symbols-outlined text-[22px]">warning</span>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-red-600 text-base">Permanently Delete Merchant Store</h4>
+                        <p className="text-xs text-on-surface-variant">
+                          This will permanently delete <strong>{managingTenant.name}</strong> (`/{managingTenant.slug}`), all issued passes, member records, and de-provision its Google Wallet class.
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Test Pass Issuer */}
-                  <div className="p-5 rounded-xl bg-surface-container border border-surface-container-highest space-y-3">
-                    <h4 className="font-bold text-on-surface">Issue Test Google Wallet Pass</h4>
-                    <p className="text-[12px] text-on-surface-variant">
-                      Mints a test signed JWT Google Wallet URL under store tenant /{managingTenant.slug}
-                    </p>
-                    <button
-                      onClick={() => {
-                        sounds.click(1000, 0.02);
-                        const testUrl = `https://pay.google.com/gp/v/save/eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test_${managingTenant.slug}`;
-                        navigator.clipboard.writeText(testUrl);
-                        triggerNotice('Copied Test Signed JWT Wallet Save Link!');
-                      }}
-                      className="px-5 py-2.5 rounded-full bg-[#ff5722] text-white font-label-md text-label-md font-bold tactile-glow flex items-center gap-2"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">add_to_home_screen</span>
-                      <span>Copy Test Wallet Pass Link</span>
-                    </button>
-                  </div>
+                    <div className="p-3.5 rounded-xl bg-surface-container border border-red-500/20 text-xs text-on-surface-variant space-y-2">
+                      <p>
+                        To confirm deletion, please type the store name <strong className="text-on-surface font-mono">{managingTenant.name}</strong> below:
+                      </p>
+                      <input
+                        type="text"
+                        value={deleteConfirmInput}
+                        onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                        placeholder={`Type "${managingTenant.name}" to confirm`}
+                        className="w-full px-3.5 py-2 rounded-xl bg-surface text-on-surface text-xs border border-surface-container-highest font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
 
-                  {/* Danger Zone */}
-                  <div className="p-5 rounded-xl bg-red-950/20 border border-red-500/30 space-y-3">
-                    <h4 className="font-bold text-red-500">Danger Zone</h4>
-                    <p className="text-[12px] text-on-surface-variant">
-                      Deletes merchant tenant from PassLoyal OS and archives Google Wallet LoyaltyClass.
-                    </p>
-                    <button
-                      onClick={() => handleDeleteTenant(managingTenant.id, managingTenant.name)}
-                      className="px-5 py-2 rounded-full bg-red-600 text-white font-label-sm text-label-sm font-bold hover:bg-red-700 transition-all flex items-center gap-1.5"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">delete</span>
-                      <span>Archive &amp; Delete Store Tenant</span>
-                    </button>
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="button"
+                        disabled={isDeleting || deleteConfirmInput.trim() !== managingTenant.name}
+                        onClick={() => handleDeleteTenant(managingTenant.id, managingTenant.slug, managingTenant.name)}
+                        className="px-5 py-2.5 rounded-full bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-bold text-xs transition-all flex items-center gap-1.5 shadow-md"
+                      >
+                        {isDeleting ? (
+                          <>
+                            <span className="material-symbols-outlined text-[16px] animate-spin">refresh</span>
+                            <span>Deleting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+                            <span>Permanently Delete Merchant</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

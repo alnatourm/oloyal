@@ -133,6 +133,13 @@ interface TenantRow {
   archetype: string;
   class_id: string;
   issuer_id: string;
+  owner_name?: string;
+  owner_email?: string;
+  password_hash?: string;
+  status?: string;
+  plan?: string;
+  pass_limit?: number;
+  created_at?: string;
 }
 
 interface MemberRow {
@@ -157,6 +164,12 @@ const fallbackTenants: TenantRow[] = [
     archetype: 'loyalty',
     class_id: `${MASTER_ISSUER_ID}.tenant_banlis_loyalty_v3`,
     issuer_id: MASTER_ISSUER_ID,
+    owner_name: 'Elena Rostova',
+    owner_email: 'banlis@oloyal.com',
+    status: 'Active',
+    plan: 'growth',
+    pass_limit: 5000,
+    created_at: new Date().toISOString(),
   },
 ];
 
@@ -379,11 +392,14 @@ app.get('/api/tenants', async (_req: Request, res: Response) => {
           t.issuer_id,
           t.owner_name,
           t.owner_email,
+          t.status,
+          t.plan,
+          t.pass_limit,
           t.created_at,
           COUNT(m.id)::int as pass_count
         FROM tenants t
         LEFT JOIN members m ON m.tenant_id = t.id
-        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.created_at
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
         ORDER BY t.id;
       `;
 
@@ -398,10 +414,10 @@ app.get('/api/tenants', async (_req: Request, res: Response) => {
         logoUrl: r.logo,
         archetype: r.archetype || 'loyalty',
         classId: r.class_id,
-        plan: 'growth',
-        passLimit: 5000,
+        plan: r.plan || 'growth',
+        passLimit: Number(r.pass_limit || (r.plan === 'scale' ? 50000 : r.plan === 'starter' ? 500 : 5000)),
         passCount: Number(r.pass_count || 0),
-        status: 'Active',
+        status: r.status || 'Active',
         createdAt: r.created_at || new Date().toISOString(),
       }));
       return res.json(mapped);
@@ -416,25 +432,25 @@ app.get('/api/tenants', async (_req: Request, res: Response) => {
       id: t.id,
       slug: t.slug,
       name: t.name,
-      ownerName: 'Store Manager',
-      ownerEmail: `${t.slug}@oloyal.com`,
+      ownerName: t.owner_name || 'Store Manager',
+      ownerEmail: t.owner_email || `${t.slug}@oloyal.com`,
       legalEntity: `${t.name} LLC`,
       brandColor: t.color,
       logoUrl: t.logo,
       archetype: t.archetype,
       classId: t.class_id,
-      plan: 'growth',
-      passLimit: 5000,
+      plan: t.plan || 'growth',
+      passLimit: t.pass_limit || 5000,
       passCount: 0,
-      status: 'Active',
-      createdAt: new Date().toISOString(),
+      status: t.status || 'Active',
+      createdAt: t.created_at || new Date().toISOString(),
     }))
   );
 });
 
 // Helper for provisioning a tenant
 async function provisionTenantHandler(req: Request, res: Response) {
-  const { name, legalEntity, brandColor, logoUrl, archetype, plan, ownerName, owner_name, ownerEmail, owner_email, password } = req.body || {};
+  const { name, legalEntity, brandColor, logoUrl, archetype, plan, status, ownerName, owner_name, ownerEmail, owner_email, password } = req.body || {};
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Store name is required' });
   }
@@ -447,6 +463,9 @@ async function provisionTenantHandler(req: Request, res: Response) {
   const finalOwnerName = (ownerName || owner_name || '').trim() || 'Store Manager';
   const finalOwnerEmail = (ownerEmail || owner_email || '').trim().toLowerCase() || `${slug}@oloyal.com`;
   const passwordHash = hashPassword(password || 'admin123');
+  const finalPlan = plan || 'growth';
+  const passLimit = finalPlan === 'scale' ? 50000 : finalPlan === 'starter' ? 500 : 5000;
+  const finalStatus = status || 'Pending Approval'; // Default new registrations to Pending Approval
 
   let insertedRow: any = null;
 
@@ -455,13 +474,13 @@ async function provisionTenantHandler(req: Request, res: Response) {
       await ensureMigration();
       const inserted = await sql`
         INSERT INTO tenants (
-          id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, created_at
+          id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
         )
         VALUES (
           ${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID},
-          ${finalOwnerName}, ${finalOwnerEmail}, ${passwordHash}, NOW()
+          ${finalOwnerName}, ${finalOwnerEmail}, ${passwordHash}, ${finalStatus}, ${finalPlan}, ${passLimit}, NOW()
         )
-        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, created_at;
+        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, status, plan, pass_limit, created_at;
       `;
       if (inserted.length > 0) {
         insertedRow = inserted[0];
@@ -470,9 +489,9 @@ async function provisionTenantHandler(req: Request, res: Response) {
       console.error('[Neon Postgres] INSERT tenant error:', err);
       try {
         const inserted = await sql`
-          INSERT INTO tenants (id, slug, name, logo, color, archetype, class_id, issuer_id)
-          VALUES (${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID})
-          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id;
+          INSERT INTO tenants (id, slug, name, logo, color, archetype, class_id, issuer_id, status)
+          VALUES (${tenantId}, ${slug}, ${name.trim()}, ${logo}, ${color}, ${archetype || 'loyalty'}, ${classId}, ${MASTER_ISSUER_ID}, ${finalStatus})
+          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status;
         `;
         if (inserted.length > 0) {
           insertedRow = inserted[0];
@@ -493,6 +512,9 @@ async function provisionTenantHandler(req: Request, res: Response) {
       issuer_id: MASTER_ISSUER_ID,
       owner_name: finalOwnerName,
       owner_email: finalOwnerEmail,
+      status: finalStatus,
+      plan: finalPlan,
+      pass_limit: passLimit,
       created_at: new Date().toISOString(),
     };
     fallbackTenants.push(fallbackItem);
@@ -510,10 +532,10 @@ async function provisionTenantHandler(req: Request, res: Response) {
     logoUrl: insertedRow?.logo || logo,
     archetype: insertedRow?.archetype || archetype || 'loyalty',
     classId: insertedRow?.class_id || classId,
-    plan: plan || 'growth',
-    passLimit: plan === 'growth' ? 5000 : plan === 'scale' ? 50000 : 500,
+    plan: insertedRow?.plan || finalPlan,
+    passLimit: Number(insertedRow?.pass_limit || passLimit),
     passCount: 0,
-    status: 'Active',
+    status: insertedRow?.status || finalStatus,
     createdAt: insertedRow?.created_at || new Date().toISOString(),
   };
 
@@ -528,7 +550,9 @@ async function provisionTenantHandler(req: Request, res: Response) {
       reviewStatus: 'UNDER_REVIEW',
       smartTapPayload: 'ENCRYPTED_AES128_HMAC_SHA256',
     },
-    message: 'Store provisioned successfully with auth in Neon Postgres',
+    message: finalStatus === 'Pending Approval'
+      ? 'Store registered and submitted for Super Admin package approval'
+      : 'Store provisioned successfully with auth in Neon Postgres',
   });
 }
 
@@ -536,13 +560,38 @@ async function provisionTenantHandler(req: Request, res: Response) {
 app.post('/api/tenants', provisionTenantHandler);
 app.post('/api/provision', provisionTenantHandler);
 
-// POST /api/login - Tenant Owner Login Authentication
+// POST /api/login - Tenant Owner or Super Admin Login Authentication
 app.post('/api/login', async (req: Request, res: Response) => {
-  const { email, owner_email, username, password } = req.body || {};
+  const { email, owner_email, username, password, role } = req.body || {};
   const userIdentifier = (email || owner_email || username || '').trim().toLowerCase();
 
   if (!userIdentifier || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  // 1. Dedicated Super Admin Authentication
+  if (
+    role === 'admin' ||
+    userIdentifier === 'admin@passloyal.com' ||
+    userIdentifier === 'admin@oloyal.com' ||
+    userIdentifier === 'alnatour.m@gmail.com' ||
+    userIdentifier === 'admin' ||
+    userIdentifier === 'superadmin'
+  ) {
+    if (password === 'admin123' || password === 'masterkey' || password === 'admin' || password === process.env.ADMIN_PASSWORD) {
+      return res.status(200).json({
+        success: true,
+        role: 'admin',
+        user: {
+          name: 'Super Admin Master Issuer',
+          email: userIdentifier.includes('@') ? userIdentifier : 'admin@passloyal.com',
+          role: 'admin',
+        },
+        token: `session_admin_${Date.now()}`,
+        message: 'Super Admin login successful',
+      });
+    }
+    return res.status(401).json({ error: 'Invalid Super Admin password' });
   }
 
   if (sql) {
@@ -550,7 +599,7 @@ app.post('/api/login', async (req: Request, res: Response) => {
       await ensureMigration();
       const rows = await sql`
         SELECT 
-          id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, created_at
+          id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
         FROM tenants 
         WHERE LOWER(owner_email) = ${userIdentifier} 
            OR slug = ${userIdentifier} 
@@ -568,6 +617,32 @@ app.post('/api/login', async (req: Request, res: Response) => {
         return res.status(401).json({ error: 'Invalid email or password' });
       }
 
+      if (tenant.status === 'Pending Approval' || tenant.status === 'pending') {
+        return res.status(403).json({
+          success: false,
+          pending: true,
+          status: 'Pending Approval',
+          tenant: {
+            id: tenant.id,
+            slug: tenant.slug,
+            name: tenant.name,
+            ownerName: tenant.owner_name || 'Store Owner',
+            ownerEmail: tenant.owner_email,
+            plan: tenant.plan || 'growth',
+            status: 'Pending Approval',
+          },
+          error: 'Your store registration has been received and is currently waiting for Super Admin approval for your package.',
+        });
+      }
+
+      if (tenant.status === 'Suspended') {
+        return res.status(403).json({
+          success: false,
+          status: 'Suspended',
+          error: 'This merchant account has been suspended by the platform administrator.',
+        });
+      }
+
       return res.status(200).json({
         success: true,
         tenant: {
@@ -580,6 +655,8 @@ app.post('/api/login', async (req: Request, res: Response) => {
           logoUrl: tenant.logo,
           archetype: tenant.archetype || 'loyalty',
           classId: tenant.class_id,
+          status: tenant.status || 'Active',
+          plan: tenant.plan || 'growth',
         },
         token: `session_${tenant.id}_${Date.now()}`,
         message: 'Login successful',
@@ -591,6 +668,61 @@ app.post('/api/login', async (req: Request, res: Response) => {
   }
 
   // Fallback for mock preview
+  const found = fallbackTenants.find(
+    (t) =>
+      t.slug === userIdentifier ||
+      t.owner_email === userIdentifier ||
+      t.id === userIdentifier ||
+      (userIdentifier.includes('banlis') && t.slug.includes('banlis'))
+  );
+
+  if (found) {
+    if (found.status === 'Pending Approval' || found.status === 'pending') {
+      return res.status(403).json({
+        success: false,
+        pending: true,
+        status: 'Pending Approval',
+        tenant: {
+          id: found.id,
+          slug: found.slug,
+          name: found.name,
+          ownerName: found.owner_name || 'Store Owner',
+          ownerEmail: found.owner_email || userIdentifier,
+          plan: found.plan || 'growth',
+          status: 'Pending Approval',
+        },
+        error: 'Your store registration has been received and is currently waiting for Super Admin approval for your package.',
+      });
+    }
+
+    if (found.status === 'Suspended') {
+      return res.status(403).json({
+        success: false,
+        status: 'Suspended',
+        error: 'This merchant account has been suspended by the platform administrator.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      tenant: {
+        id: found.id,
+        slug: found.slug,
+        name: found.name,
+        ownerName: found.owner_name || 'Store Owner',
+        ownerEmail: found.owner_email || userIdentifier,
+        brandColor: found.color || '#ff5722',
+        logoUrl: found.logo,
+        archetype: found.archetype || 'loyalty',
+        classId: found.class_id,
+        status: found.status || 'Active',
+        plan: found.plan || 'growth',
+      },
+      token: `session_mock_${Date.now()}`,
+      message: 'Login successful (offline fallback)',
+    });
+  }
+
   return res.status(200).json({
     success: true,
     tenant: {
@@ -600,6 +732,8 @@ app.post('/api/login', async (req: Request, res: Response) => {
       ownerName: 'Store Owner',
       ownerEmail: userIdentifier,
       brandColor: '#ff5722',
+      status: 'Active',
+      plan: 'growth',
     },
     token: `session_mock_${Date.now()}`,
     message: 'Login successful (offline fallback)',
@@ -750,20 +884,58 @@ app.get('/api/tenants/:slug/members', async (req: Request, res: Response) => {
         WHERE t.slug = ${slug} 
            OR t.id = ${slug} 
            OR t.slug = ${slug.replace(/-bistro$/, '')}
+           OR (${slug.includes('banlis')} AND (t.slug LIKE '%banlis%' OR t.id LIKE '%banlis%'))
         ORDER BY m.id DESC;
       `;
-      return res.json(rows);
+      if (rows && rows.length > 0) {
+        return res.json(rows);
+      }
     } catch (err) {
       console.error('[Neon Postgres] GET /api/tenants/:slug/members error:', err);
     }
   }
-  res.json([]);
+
+  // Fallback: match tenant from fallbackTenants and return enrolled members
+  const found = fallbackTenants.find(
+    (t) =>
+      t.slug === slug ||
+      t.id === slug ||
+      t.slug === slug.replace(/-bistro$/, '') ||
+      (slug.includes('banlis') && (t.slug.includes('banlis') || t.id.includes('banlis')))
+  ) || fallbackTenants[0];
+
+  const matchedMembers = fallbackMembers
+    .filter(
+      (m) =>
+        m.tenant_id === found.id ||
+        m.tenant_id === found.slug ||
+        (slug.includes('banlis') && (m.tenant_id.includes('banlis') || found.id.includes('banlis')))
+    )
+    .map((m) => ({
+      id: m.id,
+      tenant_id: m.tenant_id,
+      customer_name: m.name,
+      phone: m.phone,
+      email: m.email,
+      member_id: m.member_id,
+      points: m.points,
+      balance_cents: m.balance_cents,
+      google_object_id: m.google_object_id,
+      store_name: found.name,
+      brand_color: found.color,
+      logo_url: found.logo,
+      class_id: found.class_id,
+    }));
+
+  res.json(matchedMembers);
 });
 
-// PATCH /api/tenants/:slug - Update tenant customization settings
+// PATCH /api/tenants/:slug - Update tenant customization settings, password, and status
 app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
   const { slug } = req.params;
-  const { name, logoUrl, brandColor, archetype } = req.body;
+  const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail, password } = req.body;
+  const computedLimit = passLimit || pass_limit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null);
+  const newPasswordHash = password && password.trim() ? hashPassword(password.trim()) : null;
 
   if (sql) {
     try {
@@ -773,9 +945,15 @@ app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
           name = COALESCE(${name || null}, name),
           logo = COALESCE(${logoUrl || null}, logo),
           color = COALESCE(${brandColor || null}, color),
-          archetype = COALESCE(${archetype || null}, archetype)
+          archetype = COALESCE(${archetype || null}, archetype),
+          status = COALESCE(${status || null}, status),
+          plan = COALESCE(${plan || null}, plan),
+          pass_limit = COALESCE(${computedLimit || null}, pass_limit),
+          owner_name = COALESCE(${ownerName || null}, owner_name),
+          owner_email = COALESCE(${ownerEmail || null}, owner_email),
+          password_hash = COALESCE(${newPasswordHash}, password_hash)
         WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
-        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id;
+        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit;
       `;
 
       if (rows.length > 0) {
@@ -790,7 +968,57 @@ app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
     }
   }
 
+  const found = fallbackTenants.find(
+    (t) => t.slug === slug || t.id === slug || t.slug === slug.replace(/-bistro$/, '')
+  );
+  if (found) {
+    if (status) found.status = status;
+    if (plan) found.plan = plan;
+    if (computedLimit) found.pass_limit = computedLimit;
+    if (name) found.name = name;
+    if (brandColor) found.color = brandColor;
+    if (logoUrl) found.logo = logoUrl;
+    if (ownerName) found.owner_name = ownerName;
+    if (ownerEmail) found.owner_email = ownerEmail;
+    return res.json({ success: true, tenant: found, message: 'Tenant updated in memory' });
+  }
+
   res.json({ success: true, message: 'Tenant updated' });
+});
+
+// DELETE /api/tenants/:slug - Delete or Archive store tenant
+app.delete('/api/tenants/:slug', async (req: Request, res: Response) => {
+  const { slug } = req.params;
+
+  if (sql) {
+    try {
+      await sql`
+        DELETE FROM members WHERE tenant_id IN (
+          SELECT id FROM tenants WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+        );
+      `;
+      const deletedRows = await sql`
+        DELETE FROM tenants 
+        WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+        RETURNING id, slug, name;
+      `;
+      if (deletedRows.length > 0) {
+        return res.json({ success: true, deleted: deletedRows[0], message: 'Merchant tenant deleted from Neon Postgres' });
+      }
+    } catch (err) {
+      console.error('[Neon Postgres] DELETE /api/tenants/:slug error:', err);
+    }
+  }
+
+  const idx = fallbackTenants.findIndex(
+    (t) => t.slug === slug || t.id === slug || t.slug === slug.replace(/-bistro$/, '')
+  );
+  if (idx !== -1) {
+    const [removed] = fallbackTenants.splice(idx, 1);
+    return res.json({ success: true, deleted: removed, message: 'Merchant tenant deleted from memory' });
+  }
+
+  res.json({ success: true, message: 'Merchant tenant deleted' });
 });
 
 // POST /api/tenants/:slug/enroll - Customer Sign-up & Mint Google Wallet Pass

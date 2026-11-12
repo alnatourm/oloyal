@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { CustomerMember } from '../types';
-import { sounds } from '../utils/sound';
 
 interface DashboardViewProps {
   activeSlug?: string;
+  onNavigateToPassStudio?: () => void;
+  onEnrollMember?: () => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ activeSlug = 'banlis' }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  activeSlug = 'banlis',
+  onNavigateToPassStudio,
+  onEnrollMember,
+}) => {
   const [tenant, setTenant] = useState<{
     id: string;
     slug: string;
@@ -28,21 +33,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activeSlug = 'banl
   });
 
   const [members, setMembers] = useState<CustomerMember[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedTier, setSelectedTier] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
-
-  // Form states for Card Customization Panel
-  const [editName, setEditName] = useState<string>('');
-  const [editColor, setEditColor] = useState<string>('#ff5722');
-  const [editLogo, setEditLogo] = useState<string>('');
-  const [editArchetype, setEditArchetype] = useState<string>('loyalty');
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-
-  const triggerNotice = (msg: string) => {
-    sounds.chime();
-    setNoticeMessage(msg);
-    setTimeout(() => setNoticeMessage(null), 2500);
-  };
 
   // Fetch Tenant Data & Member List for activeSlug
   useEffect(() => {
@@ -69,10 +62,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activeSlug = 'banl
             passCount: Number(data.passCount || 0),
             totalPoints: Number(data.totalPoints || 0),
           });
-          setEditName(data.name);
-          setEditColor(data.brandColor || '#ff5722');
-          setEditLogo(data.logoUrl || '');
-          setEditArchetype(data.archetype || 'loyalty');
         }
       })
       .catch((err) => console.error('Error fetching tenant:', err));
@@ -118,45 +107,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activeSlug = 'banl
       .finally(() => setIsLoading(false));
   }, [activeSlug]);
 
-  // Save Card Customization to Neon tenants table
-  const handleSaveCustomization = async (e: React.FormEvent) => {
-    e.preventDefault();
-    sounds.chime();
-    setIsSaving(true);
-    try {
-      const res = await fetch(`/api/tenants/${activeSlug}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editName,
-          brandColor: editColor,
-          logoUrl: editLogo,
-          archetype: editArchetype,
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setTenant((prev) => ({
-          ...prev,
-          name: editName,
-          brandColor: editColor,
-          logoUrl: editLogo,
-          archetype: editArchetype,
-        }));
-        triggerNotice(`Saved customization for ${editName} in Neon Postgres!`);
-      } else {
-        triggerNotice(data.error || 'Failed to save customization.');
-      }
-    } catch (err: any) {
-      triggerNotice(`Error: ${err?.message || 'Save failed'}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const memberCount = members.length;
   const totalPointsSum = members.reduce((acc, m) => acc + m.points, 0);
+
+  // Filter members by search and tier
+  const filteredMembers = members.filter((m) => {
+    const matchesSearch =
+      m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      m.uid.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesTier = selectedTier === 'ALL' || m.tier === selectedTier;
+    return matchesSearch && matchesTier;
+  });
 
   return (
     <div className="flex flex-col w-full gap-6 select-none">
@@ -192,6 +153,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activeSlug = 'banl
         </div>
 
         <div className="flex items-center gap-3">
+          {onNavigateToPassStudio && (
+            <button
+              onClick={onNavigateToPassStudio}
+              className="px-4 py-2 rounded-full bg-[#ff5722]/10 hover:bg-[#ff5722] hover:text-white text-[#ff5722] font-label-md text-label-md font-bold tactile-btn flex items-center gap-1.5 transition-all"
+            >
+              <span className="material-symbols-outlined text-[18px]">palette</span>
+              <span>Pass Studio Designer</span>
+            </button>
+          )}
+
           <a
             href={`/api/tenants/${tenant.slug}/members`}
             target="_blank"
@@ -296,227 +267,151 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activeSlug = 'banl
         </div>
       </div>
 
-      {/* Main 2-Column Cockpit: Left = Members Table, Right = Card Customization Panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT 7-Cols: Enrolled Members Table for activeSlug */}
-        <div className="lg:col-span-7 flex flex-col gap-4">
-          <div className="p-6 rounded-2xl bg-surface-container-low tactile-card flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#ff5722]">groups</span>
-                <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface">
-                  {tenant.name} Members ({memberCount})
-                </h3>
-              </div>
-              <span className="px-2.5 py-0.5 rounded-full bg-surface-container font-label-sm text-label-sm font-semibold text-on-surface-variant">
-                Filtered by Tenant ID
-              </span>
+      {/* Full-Width Enrolled Members Table for activeSlug */}
+      <div className="p-6 rounded-2xl bg-surface-container-low tactile-card flex flex-col gap-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#ff5722]/15 text-[#ff5722] flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[22px]">groups</span>
             </div>
+            <div>
+              <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface">
+                {tenant.name} Members Directory
+              </h3>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">
+                Enrolled pass holders with live Google Wallet tokens and balance synchronization
+              </p>
+            </div>
+          </div>
 
-            {isLoading ? (
-              <div className="p-12 text-center text-on-surface-variant font-label-md text-label-md flex flex-col items-center gap-2">
-                <span className="material-symbols-outlined text-[24px] animate-spin text-primary">refresh</span>
-                <span>Loading tenant members from Neon Postgres...</span>
-              </div>
-            ) : members.length === 0 ? (
-              <div className="p-12 text-center text-on-surface-variant rounded-xl bg-surface-container/40 border border-dashed border-outline-variant/40 flex flex-col items-center gap-2">
-                <span className="material-symbols-outlined text-[32px] text-outline">person_off</span>
-                <p className="font-bold text-on-surface">No members enrolled for {tenant.name} yet.</p>
-                <p className="font-body-sm text-body-sm text-outline">
-                  Enroll members using <span className="font-mono text-primary font-bold">/api/tenants/{tenant.slug}/enroll</span>
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-body-sm text-body-sm">
-                  <thead>
-                    <tr className="border-b border-surface-container-highest text-outline font-label-sm text-label-sm uppercase tracking-wider">
-                      <th className="py-3 px-3">Member</th>
-                      <th className="py-3 px-3">Member ID</th>
-                      <th className="py-3 px-3">Tier</th>
-                      <th className="py-3 px-3 text-right">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-surface-container-highest/60">
-                    {members.map((m) => (
-                      <tr key={m.id} className="hover:bg-surface-container/50 transition-colors">
-                        <td className="py-3.5 px-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center font-bold text-xs shrink-0">
-                              {m.name.slice(0, 1)}
-                            </div>
-                            <div>
-                              <div className="font-bold text-on-surface">{m.name}</div>
-                              <div className="text-[11px] text-on-surface-variant">{m.phone || 'No Phone'}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-3 font-mono text-[12px] text-outline font-semibold">
-                          {m.uid}
-                        </td>
-                        <td className="py-3.5 px-3">
-                          <span className={`px-2 py-0.5 rounded-full font-label-sm text-label-sm font-bold ${m.tierBg}`}>
-                            {m.tier}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-3 text-right font-bold text-primary font-mono text-[13px]">
-                          {m.points.toLocaleString()} PTS
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="flex items-center gap-2">
+            {onEnrollMember && (
+              <button
+                onClick={onEnrollMember}
+                className="px-4 py-2 rounded-full bg-primary-container text-on-primary font-label-md text-label-md font-bold tactile-glow hover:brightness-105 flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[18px]">person_add</span>
+                <span>Enroll Member</span>
+              </button>
             )}
           </div>
         </div>
 
-        {/* RIGHT 5-Cols: Card Customization Panel for activeSlug */}
-        <div className="lg:col-span-5 flex flex-col gap-4">
-          <div className="p-6 rounded-2xl bg-surface-container-low tactile-card flex flex-col gap-5">
-            <div className="flex items-center justify-between border-b border-surface-container-highest/60 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#ff5722]">palette</span>
-                <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface">
-                  Card Customization
-                </h3>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm font-bold">
-                Neon DB Sync
-              </span>
-            </div>
-
-            {/* Live Wallet Preview Card */}
-            <div
-              className="w-full aspect-[1.58/1] rounded-2xl p-5 text-white shadow-xl flex flex-col justify-between relative overflow-hidden transition-all"
-              style={{ backgroundColor: editColor }}
-            >
-              <div className="flex items-start justify-between relative z-10">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-white text-black flex items-center justify-center font-bold overflow-hidden shadow-md">
-                    {editLogo ? (
-                      <img className="w-full h-full object-cover" src={editLogo} alt="Logo" />
-                    ) : (
-                      editName.slice(0, 1).toUpperCase() || 'T'
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-[15px] leading-tight text-white">{editName || tenant.name}</h4>
-                    <span className="text-[11px] text-white/80 font-medium">Google Wallet Class</span>
-                  </div>
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full bg-black/20 text-white font-bold text-[11px] tracking-wider uppercase border border-white/20">
-                  {editArchetype}
-                </span>
-              </div>
-
-              <div className="flex items-end justify-between relative z-10 pt-2 border-t border-white/20">
-                <div>
-                  <span className="text-[10px] text-white/70 uppercase block">Sample Pass</span>
-                  <span className="font-bold text-sm">John Doe</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-white/70 uppercase block">Points</span>
-                  <span className="font-bold text-sm text-amber-200">100 PTS</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Customization Form */}
-            <form onSubmit={handleSaveCustomization} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
-                  Store / Program Title
-                </label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="e.g. Artisan Bakery"
-                  className="h-11 px-4 rounded-xl bg-surface border border-surface-container-highest font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
-                    Brand Color
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={editColor}
-                      onChange={(e) => setEditColor(e.target.value)}
-                      className="w-10 h-10 rounded-xl cursor-pointer bg-transparent border-0"
-                    />
-                    <input
-                      type="text"
-                      value={editColor}
-                      onChange={(e) => setEditColor(e.target.value)}
-                      className="h-11 px-3 rounded-xl bg-surface border border-surface-container-highest font-mono text-sm text-on-surface w-full uppercase"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
-                    Archetype
-                  </label>
-                  <select
-                    value={editArchetype}
-                    onChange={(e) => setEditArchetype(e.target.value)}
-                    className="h-11 px-3 rounded-xl bg-surface border border-surface-container-highest font-body-md text-body-md text-on-surface focus:outline-none"
-                  >
-                    <option value="loyalty">Loyalty</option>
-                    <option value="stamp">Stamp Card</option>
-                    <option value="vip">VIP Tier</option>
-                    <option value="membership">Membership</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
-                  Program Logo URL (Public HTTPS)
-                </label>
-                <input
-                  type="url"
-                  value={editLogo}
-                  onChange={(e) => setEditLogo(e.target.value)}
-                  placeholder="https://your-domain.com/logo.png"
-                  className="h-11 px-4 rounded-xl bg-surface border border-surface-container-highest font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
-
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-surface-container-highest/60">
+          <div className="flex items-center gap-2 w-full sm:w-80 h-10 px-3.5 rounded-full bg-surface tactile-deboss">
+            <span className="material-symbols-outlined text-outline text-[18px]">search</span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search member name or ID..."
+              className="bg-transparent w-full font-body-sm text-body-sm text-on-surface focus:outline-none"
+            />
+            {searchTerm && (
               <button
-                type="submit"
-                disabled={isSaving}
-                className="w-full py-3.5 rounded-full bg-[#ff5722] text-white font-headline-sm text-headline-sm font-bold tactile-glow flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg mt-2"
+                onClick={() => setSearchTerm('')}
+                className="text-outline hover:text-on-surface"
               >
-                {isSaving ? (
-                  <>
-                    <span className="material-symbols-outlined text-[20px] animate-spin">refresh</span>
-                    <span>Saving to Neon DB...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-[20px]">save</span>
-                    <span>Save Customization for {tenant.name}</span>
-                  </>
-                )}
+                <span className="material-symbols-outlined text-[16px]">close</span>
               </button>
-            </form>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 self-start sm:self-auto overflow-x-auto p-1 bg-surface-container rounded-full">
+            {['ALL', 'SILVER', 'GOLD VIP', 'PLATINUM'].map((tier) => (
+              <button
+                key={tier}
+                onClick={() => setSelectedTier(tier)}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  selectedTier === tier
+                    ? 'bg-surface-container-lowest text-on-surface shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                {tier}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
 
-      {/* Toast Notice */}
-      {noticeMessage && (
-        <div className="fixed bottom-8 right-8 z-50 bg-surface-container-lowest text-on-surface rounded-full px-6 py-4 tactile-card flex items-center gap-3 ring-1 ring-primary-container/20 shadow-2xl">
-          <span className="material-symbols-outlined text-primary">verified</span>
-          <span className="font-label-md text-label-md font-bold">{noticeMessage}</span>
-        </div>
-      )}
+        {/* Table Content */}
+        {isLoading ? (
+          <div className="p-16 text-center text-on-surface-variant font-label-md text-label-md flex flex-col items-center gap-2">
+            <span className="material-symbols-outlined text-[28px] animate-spin text-primary">refresh</span>
+            <span>Loading members from database...</span>
+          </div>
+        ) : filteredMembers.length === 0 ? (
+          <div className="p-16 text-center text-on-surface-variant rounded-2xl bg-surface-container/30 border border-dashed border-outline-variant/40 flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-surface-container flex items-center justify-center text-outline">
+              <span className="material-symbols-outlined text-[32px]">person_off</span>
+            </div>
+            <div>
+              <p className="font-bold text-on-surface text-base">
+                {searchTerm || selectedTier !== 'ALL'
+                  ? 'No matching members found.'
+                  : `No members enrolled for ${tenant.name} yet.`}
+              </p>
+              <p className="font-body-sm text-body-sm text-outline mt-1">
+                {searchTerm || selectedTier !== 'ALL'
+                  ? 'Try adjusting your search query or tier filter.'
+                  : 'Share the Customer Join link to start issuing passes to Google Wallet.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-surface-container-highest/60">
+            <table className="w-full text-left font-body-sm text-body-sm">
+              <thead>
+                <tr className="bg-surface-container/50 border-b border-surface-container-highest text-outline font-label-sm text-label-sm uppercase tracking-wider">
+                  <th className="py-3 px-4">Member Name</th>
+                  <th className="py-3 px-4">Pass / Member ID</th>
+                  <th className="py-3 px-4">Loyalty Tier</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Points Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-container-highest/60 bg-surface-container-lowest">
+                {filteredMembers.map((m) => (
+                  <tr key={m.id} className="hover:bg-surface-container/30 transition-colors">
+                    <td className="py-4 px-4">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white shadow-sm shrink-0"
+                          style={{ backgroundColor: tenant.brandColor || '#ff5722' }}
+                        >
+                          {m.name.slice(0, 1)}
+                        </div>
+                        <div>
+                          <div className="font-bold text-on-surface">{m.name}</div>
+                          <div className="text-[12px] text-on-surface-variant font-mono">{m.phone || 'NFC Card Member'}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 font-mono text-[13px] text-outline font-semibold">
+                      {m.uid}
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className={`px-2.5 py-1 rounded-full font-label-sm text-label-sm font-bold ${m.tierBg}`}>
+                        {m.tier}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Google Wallet Active</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 text-right font-extrabold text-[#ff5722] font-mono text-[15px]">
+                      {m.points.toLocaleString()} PTS
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

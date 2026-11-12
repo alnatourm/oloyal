@@ -9,19 +9,37 @@ import { CustomersCRMView } from './views/CustomersCRMView';
 import { OnboardingView } from './views/OnboardingView';
 import { SaaSBillingView } from './views/SaaSBillingView';
 import { CustomerEnrollmentView } from './views/CustomerEnrollmentView';
+import { MerchantAuthView } from './views/MerchantAuthView';
+import { LandingPageView } from './views/LandingPageView';
 import { SuperAdminView } from './views/SuperAdminView';
 import { PrivacyPolicyView } from './views/PrivacyPolicyView';
 import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
 
 export default function App() {
-  const [currentPath, setCurrentPath] = useState<NavigationPath>('dashboard');
+  const [currentPath, setCurrentPath] = useState<NavigationPath>(() => {
+    return localStorage.getItem('passloyal_role') ? 'dashboard' : 'landing';
+  });
+  const [userRole, setUserRole] = useState<'admin' | 'merchant'>(() => {
+    return (localStorage.getItem('passloyal_role') as 'admin' | 'merchant') || 'merchant';
+  });
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Multi-Tenant Context State
-  const [activeTenantSlug, setActiveTenantSlug] = useState<string>('banlis');
+  const [activeTenantSlug, setActiveTenantSlug] = useState<string>(() => {
+    return localStorage.getItem('passloyal_tenant_slug') || 'banlis';
+  });
   const [tenants, setTenants] = useState<Array<{ id: string; slug: string; name: string; logoUrl?: string; brandColor?: string }>>([]);
+
+  const isLanding = currentPath === 'landing';
+
+  // Guard /super-admin: Non-admins CANNOT see or access the admin page
+  useEffect(() => {
+    if (currentPath === 'super-admin' && userRole !== 'admin') {
+      setCurrentPath('dashboard');
+    }
+  }, [currentPath, userRole]);
 
   const fetchTenants = () => {
     fetch('/api/tenants')
@@ -42,11 +60,26 @@ export default function App() {
   }, []);
 
   const handleNavigate = (path: NavigationPath) => {
+    if (path === 'super-admin' && userRole !== 'admin') {
+      setToastMessage('Access restricted to Super Admin only.');
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
     setCurrentPath(path);
+  };
+
+  const handleLogout = () => {
+    setUserRole('merchant');
+    localStorage.removeItem('passloyal_role');
+    localStorage.removeItem('passloyal_token');
+    setToastMessage('Signed out successfully.');
+    setCurrentPath('landing');
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleSelectTenant = (slug: string) => {
     setActiveTenantSlug(slug);
+    localStorage.setItem('passloyal_tenant_slug', slug);
     setCurrentPath('dashboard');
   };
 
@@ -60,27 +93,69 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  return (
-    <div className="min-h-screen bg-[#f7f9fc] text-[#191c1e] font-sans antialiased pb-12">
-      {/* Fixed Left Navigation Sidebar */}
-      <Navigation
-        currentPath={currentPath}
-        onNavigate={handleNavigate}
-        openScannerModal={openScanner}
-      />
+  const handleLoginSuccess = (slug?: string, tenantName?: string, role?: 'admin' | 'merchant') => {
+    const assignedRole = role || (slug ? 'merchant' : 'admin');
+    setUserRole(assignedRole);
+    localStorage.setItem('passloyal_role', assignedRole);
+    if (slug) {
+      setActiveTenantSlug(slug);
+      localStorage.setItem('passloyal_tenant_slug', slug);
+    }
+    fetchTenants();
+    if (assignedRole === 'admin') {
+      setToastMessage('Authenticated as Super Admin Master Issuer');
+      setCurrentPath('super-admin');
+    } else {
+      setToastMessage(`Welcome! Authenticated as ${tenantName || 'Store Merchant'}`);
+      setCurrentPath('dashboard');
+    }
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
-      {/* Top Header Bar with Tenant Switcher */}
-      <Header
-        openScannerModal={openScanner}
-        onQuickNotice={() => setToastMessage('System Update: Smart Tap v3.2 Cryptographic Session Active.')}
-        activeTenantSlug={activeTenantSlug}
-        tenants={tenants}
-        onSelectTenant={handleSelectTenant}
-      />
+  return (
+    <div className="min-h-screen bg-[#f7f9fc] text-[#191c1e] font-sans antialiased">
+      {/* Fixed Left Navigation Sidebar & Top Header - STRICTLY HIDDEN ON LANDING PAGE */}
+      {!isLanding && (
+        <>
+          <Navigation
+            currentPath={currentPath}
+            onNavigate={handleNavigate}
+            openScannerModal={openScanner}
+            userRole={userRole}
+            onLogout={handleLogout}
+          />
+          <Header
+            openScannerModal={openScanner}
+            onQuickNotice={() => setToastMessage('System Update: Smart Tap v3.2 Cryptographic Session Active.')}
+            activeTenantSlug={activeTenantSlug}
+            tenants={tenants}
+            onSelectTenant={handleSelectTenant}
+            onNavigateToAuth={() => setCurrentPath('merchant-auth')}
+            onNavigateToAdmin={() => setCurrentPath('super-admin')}
+            onLogout={handleLogout}
+            userRole={userRole}
+          />
+        </>
+      )}
 
       {/* Main View Container */}
-      <main className="pl-28 lg:pl-32 pr-6 pt-24 max-w-[1600px] mx-auto transition-all">
-        {currentPath === 'dashboard' && <DashboardView activeSlug={activeTenantSlug} />}
+      <main className={isLanding ? "w-full" : "pl-28 lg:pl-32 pr-6 pt-24 max-w-[1600px] mx-auto transition-all pb-12"}>
+        {currentPath === 'landing' && (
+          <LandingPageView
+            onLoginSuccess={handleLoginSuccess}
+            onNavigateToDashboard={() => setCurrentPath('dashboard')}
+            onNavigateToEnroll={() => setCurrentPath('customer-join')}
+            onOpenLoginModal={() => setCurrentPath('merchant-auth')}
+          />
+        )}
+
+        {currentPath === 'dashboard' && (
+          <DashboardView
+            activeSlug={activeTenantSlug}
+            onNavigateToPassStudio={() => setCurrentPath('pass-studio')}
+            onEnrollMember={() => setCurrentPath('customer-join')}
+          />
+        )}
         
         {currentPath === 'pass-studio' && (
           <PassStudioView
@@ -105,9 +180,35 @@ export default function App() {
 
         {currentPath === 'customer-join' && <CustomerEnrollmentView />}
 
+        {currentPath === 'merchant-auth' && (
+          <MerchantAuthView
+            onLoginSuccess={(slug, tenantName, role) => {
+              const assignedRole = role || (slug ? 'merchant' : 'admin');
+              setUserRole(assignedRole);
+              localStorage.setItem('passloyal_role', assignedRole);
+              if (slug) {
+                setActiveTenantSlug(slug);
+                localStorage.setItem('passloyal_tenant_slug', slug);
+              }
+              fetchTenants();
+              if (assignedRole === 'admin') {
+                setToastMessage('Authenticated as Super Admin Master Issuer');
+                setCurrentPath('super-admin');
+              } else {
+                setToastMessage(`Welcome! Authenticated as ${tenantName || 'Store Merchant'}`);
+                setCurrentPath('dashboard');
+              }
+              setTimeout(() => setToastMessage(null), 3500);
+            }}
+            onNavigateToCustomerEnroll={() => {
+              setCurrentPath('customer-join');
+            }}
+          />
+        )}
+
         {currentPath === 'billing' && <SaaSBillingView />}
 
-        {currentPath === 'super-admin' && (
+        {currentPath === 'super-admin' && userRole === 'admin' && (
           <SuperAdminView
             onSelectTenantDashboard={(slug) => {
               setActiveTenantSlug(slug);
@@ -155,38 +256,40 @@ export default function App() {
         )}
 
         {/* Legal & Compliance Footer Bar */}
-        <footer className="mt-16 pt-8 border-t border-surface-container-highest/60 flex flex-wrap items-center justify-between gap-4 text-outline font-label-sm text-label-sm">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#ff5722] text-[18px]">verified_user</span>
-            <span className="font-bold text-on-surface">PassLoyal OS</span>
-            <span>© 2026 PassLoyal OS • Google Wallet API Verified Issuer</span>
-          </div>
+        {!isLanding && (
+          <footer className="mt-16 pt-8 border-t border-surface-container-highest/60 flex flex-wrap items-center justify-between gap-4 text-outline font-label-sm text-label-sm">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#ff5722] text-[18px]">verified_user</span>
+              <span className="font-bold text-on-surface">PassLoyal OS</span>
+              <span>© 2026 PassLoyal OS • Google Wallet API Verified Issuer</span>
+            </div>
 
-          <div className="flex items-center gap-6">
-            <button
-              onClick={() => setCurrentPath('privacy')}
-              className={`font-semibold transition-colors hover:text-[#ff5722] ${
-                currentPath === 'privacy' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
-              }`}
-            >
-              Privacy Policy
-            </button>
-            <button
-              onClick={() => setCurrentPath('terms')}
-              className={`font-semibold transition-colors hover:text-[#ff5722] ${
-                currentPath === 'terms' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
-              }`}
-            >
-              Terms of Service
-            </button>
-            <a
-              href="mailto:alnatour.m@gmail.com"
-              className="text-on-surface-variant hover:text-[#ff5722] font-semibold"
-            >
-              Contact Support
-            </a>
-          </div>
-        </footer>
+            <div className="flex items-center gap-6">
+              <button
+                onClick={() => setCurrentPath('privacy')}
+                className={`font-semibold transition-colors hover:text-[#ff5722] ${
+                  currentPath === 'privacy' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
+                }`}
+              >
+                Privacy Policy
+              </button>
+              <button
+                onClick={() => setCurrentPath('terms')}
+                className={`font-semibold transition-colors hover:text-[#ff5722] ${
+                  currentPath === 'terms' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
+                }`}
+              >
+                Terms of Service
+              </button>
+              <a
+                href="mailto:alnatour.m@gmail.com"
+                className="text-on-surface-variant hover:text-[#ff5722] font-semibold"
+              >
+                Contact Support
+              </a>
+            </div>
+          </footer>
+        )}
       </main>
 
       {/* Optical Scanner Modal */}

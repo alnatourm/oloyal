@@ -11,7 +11,6 @@ export const CustomerEnrollmentView: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
-  const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
   // Generate a pass only when the API confirms that member was saved in DB & signed Save URL was created.
   const generatePass = async (name: string, userEmail: string, userPhone: string) => {
@@ -61,49 +60,6 @@ export const CustomerEnrollmentView: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] w-full px-4 select-none max-w-2xl mx-auto py-6">
-      {/* Explanation Banner */}
-      <div className="w-full mb-6 p-4 rounded-2xl bg-surface-container-low border border-primary-container/30 tactile-card flex items-start gap-3.5">
-        <div className="w-9 h-9 rounded-full bg-[#ff5722]/15 text-[#ff5722] flex items-center justify-center shrink-0 mt-0.5">
-          <span className="material-symbols-outlined text-[20px]">info</span>
-        </div>
-        <div className="text-left text-[13px] text-on-surface-variant leading-relaxed">
-          <p className="font-bold text-on-surface text-[14px]">
-            Why does Google Pay show "Something went wrong" on `pay.google.com`?
-          </p>
-          <p className="mt-1">
-            Google Pay requires <strong className="text-on-surface">2 final settings</strong> in your Google Pay &amp; Wallet Console:
-          </p>
-          <ol className="list-decimal pl-5 mt-1 font-mono text-[11px] text-outline space-y-1">
-            <li>Paste your 20-digit <span className="text-[#ff5722] font-bold">Issuer ID</span> in Super Admin (`/super-admin`).</li>
-            <li>In Google Pay Console, add your personal Google email (<span className="text-on-surface font-bold">alnatour.m@gmail.com</span>) under <span className="text-on-surface font-bold">Google Wallet API &gt; Test Accounts</span> while your account is in Draft mode.</li>
-          </ol>
-          <div className="flex items-center gap-3 mt-3">
-            <button
-              onClick={() => {
-                sounds.chime();
-                setIsWalletModalOpen(true);
-              }}
-              className="px-4 py-1.5 rounded-full bg-[#ff5722] text-white font-label-sm text-label-sm font-bold tactile-glow hover:brightness-105"
-            >
-              🚀 Open In-App Google Wallet Pass Visualizer
-            </button>
-            <button
-              onClick={() => setShowExplanation(!showExplanation)}
-              className="text-[#ff5722] underline font-label-sm text-label-sm font-semibold"
-            >
-              {showExplanation ? 'Hide Setup' : 'View Requirements'}
-            </button>
-          </div>
-
-          {showExplanation && (
-            <div className="mt-3 pt-3 border-t border-surface-container-highest text-[12px] space-y-1.5 font-mono text-outline">
-              <p>✔ Service Account Linked: <span className="text-emerald-500 font-bold">id-banlis-wallet@walletcard-514107.iam.gserviceaccount.com</span></p>
-              <p>✔ RS256 Private Key: <span className="text-emerald-500 font-bold">AUTHENTICATED IN BACKEND</span></p>
-              <p>⌛ Pending Google Console Action: Add <span className="text-on-surface font-bold">alnatour.m@gmail.com</span> to Test Accounts in pay.google.com/business/console!</p>
-            </div>
-          )}
-        </div>
-      </div>
 
       <div className="w-full max-w-md bg-surface-container-low rounded-3xl p-6 sm:p-8 tactile-card ring-1 ring-white/90 shadow-2xl relative overflow-hidden">
         {/* Shimmer Ambient Glow */}

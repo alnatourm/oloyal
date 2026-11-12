@@ -16,6 +16,10 @@ interface HeaderProps {
   activeTenantSlug?: string;
   tenants?: TenantItem[];
   onSelectTenant?: (slug: string) => void;
+  onNavigateToAuth?: () => void;
+  onNavigateToAdmin?: () => void;
+  onLogout?: () => void;
+  userRole?: 'admin' | 'merchant';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,6 +29,10 @@ export const Header: React.FC<HeaderProps> = ({
   activeTenantSlug,
   tenants = [],
   onSelectTenant,
+  onNavigateToAuth,
+  onNavigateToAdmin,
+  onLogout,
+  userRole = 'merchant',
 }) => {
   const [query, setQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -146,22 +154,46 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary-container tactile-active-glow"></span>
           </button>
 
-          {/* Refresh/Power */}
+          {/* Power / Logout Button (kept original look and shape as requested) */}
           <button
             onClick={() => {
               sounds.click(1200, 0.03);
-              window.location.reload();
+              if (onLogout) onLogout();
             }}
             className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface tactile-convex-sm transition-all"
-            title="Reset Terminal Session"
+            title="Log Out Session"
           >
             <span className="material-symbols-outlined text-[18px]">power_settings_new</span>
           </button>
-        </div>
 
-        {/* User Profile Avatar */}
-        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ring-2 ring-white shadow-sm" title="Merchant Host: Elena Rostova">
-          <span className="material-symbols-outlined text-on-primary text-[18px]">person</span>
+          {/* Admin Console Badge Button (Visible only to authenticated Admin) */}
+          {userRole === 'admin' && onNavigateToAdmin && (
+            <button
+              onClick={() => {
+                sounds.click();
+                onNavigateToAdmin();
+              }}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#191c1e] text-white font-label-sm text-label-sm font-bold shadow-md hover:bg-black transition-all shrink-0"
+              title="Super Admin Master Issuer Console"
+            >
+              <span className="material-symbols-outlined text-[16px] text-[#ff5722]">admin_panel_settings</span>
+              <span>Admin Console</span>
+            </button>
+          )}
+
+          {/* Account Icon (For merchant access) */}
+          {userRole !== 'admin' && onNavigateToAuth && (
+            <button
+              onClick={() => {
+                sounds.click();
+                onNavigateToAuth();
+              }}
+              className="w-9 h-9 rounded-full bg-[#ff5722] text-white flex items-center justify-center ring-2 ring-white shadow-sm hover:scale-105 active:scale-95 transition-transform shrink-0"
+              title="Account / Sign In"
+            >
+              <span className="material-symbols-outlined text-[18px]">person</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

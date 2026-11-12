@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"primary":"#b02f00","on-tertiary-fixed-variant":"#004c6d","error":"#ba1a1a","secondary":"#ac3509","background":"#f7f9fc","error-container":"#ffdad6","on-primary-fixed":"#3b0900","secondary-fixed":"#ffdbd0","secondary-fixed-dim":"#ffb59f","surface-container":"#eceef1","on-secondary-container":"#631800","on-tertiary":"#ffffff","on-surface":"#191c1e","tertiary-container":"#007caf","surface-tint":"#b02f00","on-tertiary-fixed":"#001e2e","on-secondary":"#ffffff","outline":"#907067","surface-bright":"#f7f9fc","surface-variant":"#e0e3e6","surface-container-lowest":"#ffffff","surface-container-high":"#e6e8eb","on-secondary-fixed-variant":"#852300","on-background":"#191c1e","outline-variant":"#e4beb4","on-surface-variant":"#5b4039","on-primary-container":"#541200","surface-container-highest":"#e0e3e6","surface":"#f7f9fc","primary-container":"#ff5722","primary-fixed-dim":"#ffb5a0","inverse-surface":"#2d3133","on-error-container":"#93000a","primary-fixed":"#ffdbd1","tertiary-fixed":"#c8e6ff","inverse-primary":"#ffb5a0","surface-container-low":"#f2f4f7","secondary-container":"#fe6f42","on-primary":"#ffffff","surface-dim":"#d8dadd","inverse-on-surface":"#eff1f4","on-error":"#ffffff","on-tertiary-container":"#fcfcff","on-primary-fixed-variant":"#862200","tertiary-fixed-dim":"#86cfff","tertiary":"#00628c","on-secondary-fixed":"#3a0a00"},borderRadius:{"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},spacing:{"space-xs":"0.25rem","space-sm":"0.5rem","space-2xl":"4rem","margin":"2.5rem","margin-mobile":"1.25rem","space-md":"1rem","space-lg":"1.5rem","gutter-mobile":"1rem","space-xl":"2.5rem","gutter":"1.5rem"},fontFamily:{"body-lg":["Inter"],"headline-md":["Inter"],"body-sm":["Inter"],"headline-sm":["Inter"],"label-md":["Inter"],"label-lg":["Inter"],"display-xl-mobile":["Inter"],"display-xl":["Inter"],"headline-lg-mobile":["Inter"],"label-sm":["Inter"],"headline-lg":["Inter"],"body-md":["Inter"]},fontSize:{"body-lg":["16px",{lineHeight:"24px",letterSpacing:"0em",fontWeight:"400"}],"headline-md":["20px",{lineHeight:"28px",letterSpacing:"-0.01em",fontWeight:"600"}],"body-sm":["12px",{lineHeight:"16px",letterSpacing:"0.01em",fontWeight:"400"}],"headline-sm":["16px",{lineHeight:"24px",letterSpacing:"0em",fontWeight:"600"}],"label-md":["11px",{lineHeight:"16px",letterSpacing:"0.06em",fontWeight:"600"}],"label-lg":["13px",{lineHeight:"18px",letterSpacing:"0.04em",fontWeight:"600"}],"display-xl-mobile":["36px",{lineHeight:"44px",letterSpacing:"-0.02em",fontWeight:"300"}],"display-xl":["56px",{lineHeight:"64px",letterSpacing:"-0.03em",fontWeight:"300"}],"headline-lg-mobile":["24px",{lineHeight:"32px",letterSpacing:"-0.01em",fontWeight:"500"}],"label-sm":["10px",{lineHeight:"14px",letterSpacing:"0.08em",fontWeight:"700"}],"headline-lg":["32px",{lineHeight:"40px",letterSpacing:"-0.02em",fontWeight:"500"}],"body-md":["14px",{lineHeight:"20px",letterSpacing:"0em",fontWeight:"400"}]}}}};</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><header class="fixed top-0 w-full z-50 bg-surface/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(209,217,230,0.45)]"><div class="h-20 w-full px-margin-mobile lg:px-margin flex items-center justify-between"><a class="flex items-center gap-space-sm" data-path="landing-overview" href="#"><div class="w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center shadow-[-3px_-3px_8px_#ffffff,3px_3px_8px_#d1d9e6]"><span class="material-symbols-outlined text-primary text-[22px]">contactless</span></div><span class="font-headline-md text-headline-md tracking-tight text-on-surface font-semibold">PassLoyal</span></a><nav class="hidden lg:flex items-center gap-space-xs p-space-xs bg-surface-container-low rounded-full shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]" data-active-classes="bg-surface-container-lowest text-primary shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] font-semibold"><a class="px-space-md py-space-xs rounded-full font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-all" data-path="platform" href="#">Platform</a><a class="px-space-md py-space-xs rounded-full font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-all" data-path="smart-tap" href="#">Smart Tap</a><a class="px-space-md py-space-xs rounded-full font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-all" data-path="beacons" href="#">Beacons</a><a class="px-space-md py-space-xs rounded-full font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-all" data-path="pricing" href="#">Pricing</a><a class="px-space-md py-space-xs rounded-full font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-all" data-path="enterprise" href="#">Enterprise</a></nav><div class="flex items-center gap-space-md"><a class="hidden sm:inline-flex px-space-md py-space-sm font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-colors" data-path="login" href="#">Login</a><a class="px-space-lg py-space-sm rounded-full bg-primary-container text-on-tertiary-container font-label-lg text-label-lg shadow-[0_0_20px_rgba(255,87,34,0.35)] hover:bg-secondary-container transition-all flex items-center gap-space-xs" data-path="get-started" href="#"><span>Get Started Free</span><span class="material-symbols-outlined text-[16px]">arrow_forward</span></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-20 bg-surface min-h-[calc(100vh-80px)]"><div class="flex flex-col w-full">
+<!-- Top Ambient Glow Layer -->
+<div class="relative w-full overflow-hidden">
+<div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[720px] h-[360px] bg-gradient-to-b from-primary-container/15 via-secondary-container/5 to-transparent blur-3xl pointer-events-none rounded-full"></div>
+<!-- 1. HERO SECTION -->
+<section class="w-full px-margin-mobile lg:px-margin pt-space-xl pb-space-2xl flex flex-col items-center">
+<!-- Status Badge -->
+<div class="inline-flex items-center gap-space-sm px-space-md py-space-xs rounded-full bg-surface-container-low shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] mb-space-lg">
+<span class="w-2.5 h-2.5 rounded-full bg-primary-container shadow-[0_0_8px_#ff5722] animate-pulse"></span>
+<span class="font-label-md text-label-md tracking-wider text-on-surface uppercase font-semibold">Google Wallet Smart Tap 2.0 Certified</span>
+<span class="material-symbols-outlined text-[16px] text-primary">verified</span>
+</div>
+<!-- Main Headline -->
+<h1 class="font-display-xl text-display-xl-mobile lg:text-display-xl text-center text-on-surface max-w-4xl tracking-tight leading-tight">
+        Turn Every Tap Into a <span class="font-semibold text-primary">Lifelong Regular</span>
+</h1>
+<!-- Subheadline -->
+<p class="font-body-lg text-body-lg text-on-surface-variant text-center max-w-2xl mt-space-md mb-space-xl">
+        PassLoyal empowers modern restaurants and retailers to issue native Google Wallet loyalty passes, trigger lockscreen geo-proximity alerts, and scan via NFC in 0.2s — zero apps required.
+      </p>
+<!-- CTA Buttons Group -->
+<div class="flex flex-col sm:flex-row items-center gap-space-md mb-space-lg">
+<a class="w-full sm:w-auto px-space-xl py-space-md rounded-full bg-primary-container text-on-tertiary font-headline-sm text-headline-sm shadow-[0_4px_24px_rgba(255,87,34,0.35),-3px_-3px_8px_#ffffff] hover:bg-secondary-container transition-all flex items-center justify-center gap-space-sm group" href="#calculator">
+<span>Deploy Your First Pass Free</span>
+<span class="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1">arrow_forward</span>
+</a>
+<a class="w-full sm:w-auto px-space-xl py-space-md rounded-full bg-surface-container-lowest text-on-surface font-headline-sm text-headline-sm shadow-[-5px_-5px_12px_#ffffff,5px_5px_12px_#d1d9e6] hover:shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] transition-all flex items-center justify-center gap-space-xs" href="#showcase">
+<span class="material-symbols-outlined text-primary text-[20px]">play_circle</span>
+<span>Explore Live Interactive Demo</span>
+</a>
+</div>
+<!-- Social Proof Rating Pill -->
+<div class="flex items-center gap-space-sm px-space-lg py-space-xs rounded-full bg-surface-container-low shadow-[inset_1px_1px_3px_#d1d9e6,inset_-1px_-1px_3px_#ffffff] mb-space-2xl">
+<div class="flex items-center text-primary">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium">4.9/5 from 1,200+ multi-unit restaurant operators</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="font-label-sm text-label-sm text-primary font-bold">98.4% Pass Retention</span>
+</div>
+<!-- Hero 3D Tactile Workstation Showcase -->
+<div class="w-full max-w-6xl rounded-xl bg-surface-container-low p-space-md lg:p-space-xl shadow-[-12px_-12px_28px_#ffffff,12px_12px_28px_#d1d9e6] relative" id="showcase">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-center">
+<!-- Left Metric Pods -->
+<div class="lg:col-span-3 flex flex-col gap-space-md order-2 lg:order-1">
+<div class="p-space-md rounded-lg bg-surface-container-lowest shadow-[-4px_-4px_10px_#ffffff,4px_4px_10px_#d1d9e6]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Velocity</span>
+<span class="material-symbols-outlined text-primary text-[18px]">trending_up</span>
+</div>
+<p class="font-headline-lg text-headline-lg font-bold text-on-surface">+34%</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Revisit cadence over 30 days</p>
+</div>
+<div class="p-space-md rounded-lg bg-surface-container-lowest shadow-[-4px_-4px_10px_#ffffff,4px_4px_10px_#d1d9e6]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Smart Tap NFC</span>
+<span class="material-symbols-outlined text-tertiary text-[18px]">bolt</span>
+</div>
+<p class="font-headline-lg text-headline-lg font-bold text-on-surface">0.2s</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Instant zero-touch handshake</p>
+</div>
+<div class="p-space-md rounded-lg bg-surface-container-lowest shadow-[-4px_-4px_10px_#ffffff,4px_4px_10px_#d1d9e6]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Save Rate</span>
+<span class="material-symbols-outlined text-primary text-[18px]">install_mobile</span>
+</div>
+<p class="font-headline-lg text-headline-lg font-bold text-on-surface">94.2%</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Google Wallet install conversion</p>
+</div>
+</div>
+<!-- Central 3D Concentric Rotary Dial Cockpit -->
+<div class="lg:col-span-6 flex flex-col items-center justify-center p-space-lg rounded-xl bg-surface shadow-[inset_4px_4px_10px_#d1d9e6,inset_-4px_-4px_10px_#ffffff] order-1 lg:order-2">
+<!-- Proximity Pill Indicator -->
+<div class="w-full flex items-center justify-between px-space-md py-space-xs rounded-full bg-surface-container-lowest shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] mb-space-lg">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[16px] animate-pulse">cell_tower</span>
+<span class="font-label-sm text-label-sm font-semibold text-on-surface">Beacon Active: 300m Geo-Fence</span>
+</div>
+<span class="px-space-xs py-0.5 rounded-full bg-primary-container text-on-tertiary font-label-sm text-label-sm">LIVE</span>
+</div>
+<!-- Concentric Neumorphic Rotary Dial -->
+<div class="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full bg-surface-container-low shadow-[-10px_-10px_20px_#ffffff,10px_10px_20px_#d1d9e6] flex items-center justify-center">
+<!-- Circular Track Arc SVG -->
+<svg class="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewbox="0 0 288 288">
+<circle cx="144" cy="144" fill="none" r="118" stroke="#e0e3e6" stroke-width="12"></circle>
+<circle class="transition-all duration-1000" cx="144" cy="144" fill="none" r="118" stroke="#ff5722" stroke-dasharray="741" stroke-dashoffset="180" stroke-linecap="round" stroke-width="12"></circle>
+</svg>
+<!-- Inner Beveled Dial Knob -->
+<div class="w-48 h-48 sm:w-52 sm:h-52 rounded-full bg-surface shadow-[-6px_-6px_14px_#ffffff,6px_6px_14px_#d1d9e6] flex flex-col items-center justify-center text-center relative p-space-sm">
+<!-- Notch Indicator -->
+<div class="absolute top-3 w-1.5 h-4 bg-primary-container rounded-full shadow-[0_0_8px_#ff5722]"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest font-semibold mt-space-sm">Taps Processed</span>
+<span class="font-display-xl-mobile sm:font-display-xl text-display-xl-mobile sm:text-display-xl font-bold text-on-surface tracking-tight" id="hero-counter">84,920</span>
+<span class="font-label-sm text-label-sm text-primary font-medium flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
+                  +12.4% this week
+                </span>
+</div>
+</div>
+<!-- Lockscreen Push Notification Preview Pill -->
+<div class="mt-space-lg w-full max-w-md p-space-sm rounded-lg bg-surface-container-lowest shadow-[-3px_-3px_8px_#ffffff,3px_3px_8px_#d1d9e6] flex items-center gap-space-sm">
+<div class="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center text-on-tertiary shadow-[0_0_12px_rgba(255,87,34,0.4)]">
+<span class="material-symbols-outlined text-[18px]">notifications_active</span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="font-label-sm text-label-sm font-bold text-on-surface truncate">Banlis Bistro • Proximity Push</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">🔥 Double Points Tonight! Tap at register to redeem.</p>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Now</span>
+</div>
+</div>
+<!-- Right: Google Wallet Pass Interactive Mockup -->
+<div class="lg:col-span-3 flex flex-col items-center order-3">
+<div class="w-full max-w-[270px] rounded-lg bg-surface-container-lowest p-space-md shadow-[-6px_-6px_16px_#ffffff,6px_6px_16px_#d1d9e6] relative overflow-hidden">
+<!-- Wallet Top Bar -->
+<div class="flex items-center justify-between pb-space-sm mb-space-sm border-b border-surface-container-highest">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary text-[18px]">account_balance_wallet</span>
+<span class="font-label-sm text-label-sm font-bold text-on-surface">Google Wallet</span>
+</div>
+<span class="material-symbols-outlined text-primary-container text-[18px] animate-pulse">contactless</span>
+</div>
+<!-- Pass Hero Art / Brand -->
+<div class="w-full h-24 rounded bg-gradient-to-tr from-primary to-primary-container p-space-sm flex flex-col justify-between text-on-primary shadow-sm mb-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm font-bold tracking-tight">BANLIS BISTRO</span>
+<span class="px-space-xs py-0.5 rounded-full bg-surface/20 text-on-primary font-label-sm text-label-sm backdrop-blur-sm">VIP GOLD</span>
+</div>
+<div>
+<span class="font-label-sm text-label-sm uppercase opacity-80">Reward Balance</span>
+<p class="font-headline-md text-headline-md font-bold">1,450 PTS</p>
+</div>
+</div>
+<!-- Pass Details Grid -->
+<div class="grid grid-cols-2 gap-space-xs mb-space-sm font-label-sm text-label-sm">
+<div>
+<span class="text-on-surface-variant">Member</span>
+<p class="font-semibold text-on-surface">Alexander Ray</p>
+</div>
+<div>
+<span class="text-on-surface-variant">Free Entrée</span>
+<p class="font-semibold text-primary">50 pts away</p>
+</div>
+</div>
+<!-- Tactile Barcode Recess -->
+<div class="w-full p-space-xs rounded bg-surface-container-low shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] flex flex-col items-center justify-center">
+<!-- Barcode Simulation lines -->
+<div class="flex items-center justify-center gap-0.5 h-8 w-44">
+<span class="w-1 h-full bg-on-surface"></span>
+<span class="w-0.5 h-full bg-on-surface"></span>
+<span class="w-1.5 h-full bg-on-surface"></span>
+<span class="w-0.5 h-full bg-on-surface"></span>
+<span class="w-2 h-full bg-on-surface"></span>
+<span class="w-0.5 h-full bg-on-surface"></span>
+<span class="w-1 h-full bg-on-surface"></span>
+<span class="w-2 h-full bg-on-surface"></span>
+<span class="w-0.5 h-full bg-on-surface"></span>
+<span class="w-1 h-full bg-on-surface"></span>
+<span class="w-1.5 h-full bg-on-surface"></span>
+<span class="w-0.5 h-full bg-on-surface"></span>
+<span class="w-2 h-full bg-on-surface"></span>
+<span class="w-1 h-full bg-on-surface"></span>
+</div>
+<span class="font-label-sm text-label-sm tracking-widest text-on-surface-variant mt-1">9842-8930-1011</span>
+</div>
+<div class="mt-space-sm text-center">
+<span class="font-label-sm text-label-sm text-tertiary flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">nfc</span>
+                  Hold near NFC reader to scan
+                </span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- 2. SOCIAL PROOF LOGO STRIP -->
+<section class="w-full px-margin-mobile lg:px-margin py-space-xl">
+<div class="w-full max-w-6xl mx-auto flex flex-col items-center">
+<p class="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest text-center mb-space-lg font-semibold">
+          Trusted by over 3,500+ forward-thinking dining groups, specialty cafes, and hospitality chains
+        </p>
+<div class="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-space-md">
+<!-- Logo 1: Tartine -->
+<div class="h-14 rounded-lg bg-surface-container-low shadow-[-3px_-3px_6px_#ffffff,3px_3px_6px_#d1d9e6] flex items-center justify-center px-space-md hover:shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] transition-all cursor-default">
+<span class="font-headline-sm text-headline-sm font-bold tracking-tighter text-on-surface">TARTINE</span>
+</div>
+<!-- Logo 2: Blue Bottle -->
+<div class="h-14 rounded-lg bg-surface-container-low shadow-[-3px_-3px_6px_#ffffff,3px_3px_6px_#d1d9e6] flex items-center justify-center px-space-md hover:shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] transition-all cursor-default">
+<span class="font-headline-sm text-headline-sm font-semibold tracking-tight text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-tertiary text-[18px]">local_cafe</span> Blue Bottle
+            </span>
+</div>
+<!-- Logo 3: Sweetgreen -->
+<div class="h-14 rounded-lg bg-surface-container-low shadow-[-3px_-3px_6px_#ffffff,3px_3px_6px_#d1d9e6] flex items-center justify-center px-space-md hover:shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] transition-all cursor-default">
+<span class="font-headline-sm text-headline-sm font-black tracking-normal text-on-surface lowercase">sweetgreen</span>
+</div>
+<!-- Logo 4: Shake Shack -->
+<div class="h-14 rounded-lg bg-surface-container-low shadow-[-3px_-3px_6px_#ffffff,3px_3px_6px_#d1d9e6] flex items-center justify-center px-space-md hover:shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] transition-all cursor-default">
+<span class="font-headline-sm text-headline-sm font-bold tracking-tight text-on-surface uppercase">SHAKE SHACK</span>
+</div>
+<!-- Logo 5: Dishoom -->
+<div class="h-14 rounded-lg bg-surface-container-low shadow-[-3px_-3px_6px_#ffffff,3px_3px_6px_#d1d9e6] flex items-center justify-center px-space-md hover:shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] transition-all cursor-default">
+<span class="font-headline-sm text-headline-sm font-serif font-bold tracking-widest text-on-surface">DISHOOM</span>
+</div>
+<!-- Logo 6: Momofuku -->
+<div class="h-14 rounded-lg bg-surface-container-low shadow-[-3px_-3px_6px_#ffffff,3px_3px_6px_#d1d9e6] flex items-center justify-center px-space-md hover:shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] transition-all cursor-default">
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface tracking-tighter">momofuku</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 3. VALUE PROPOSITION & 3D INTERACTIVE PILLARS -->
+<section class="w-full px-margin-mobile lg:px-margin py-space-2xl">
+<div class="w-full max-w-6xl mx-auto">
+<!-- Section Header -->
+<div class="flex flex-col items-center text-center mb-space-2xl">
+<span class="font-label-md text-label-md uppercase tracking-wider text-primary font-semibold">Engineered For Zero Friction</span>
+<h2 class="font-headline-lg text-headline-lg-mobile lg:text-headline-lg font-bold text-on-surface mt-space-xs max-w-2xl">
+            Why Modern Hospitality Groups Are Abandoning Custom Mobile Apps
+          </h2>
+</div>
+<!-- 3 Tactile Pillars Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-xl">
+<!-- Pillar 1 -->
+<div class="rounded-xl bg-surface-container-low p-space-xl shadow-[-8px_-8px_20px_#ffffff,8px_8px_20px_#d1d9e6] flex flex-col justify-between group hover:shadow-[-12px_-12px_24px_#ffffff,12px_12px_24px_#d1d9e6] transition-all">
+<div>
+<div class="w-14 h-14 rounded-full bg-surface-container-lowest shadow-[-4px_-4px_8px_#ffffff,4px_4px_8px_#d1d9e6] flex items-center justify-center text-primary mb-space-lg group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[28px]">wallet</span>
+</div>
+<h3 class="font-headline-md text-headline-md font-semibold text-on-surface mb-space-sm">
+                Native Google Wallet Passes
+              </h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-space-lg">
+                Zero app downloads or App Store passwords required. Guests add their membership pass in a single tap via table QR code, SMS receipt, or contactless tap. Dynamic artwork automatically refreshes rewards.
+              </p>
+</div>
+<!-- Tactile Interactive Visual Element -->
+<div class="p-space-md rounded-lg bg-surface shadow-[inset_3px_3px_7px_#d1d9e6,inset_-3px_-3px_7px_#ffffff]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-label-sm text-label-sm font-bold text-on-surface">Install Completion Rate</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">96.8%</span>
+</div>
+<div class="w-full h-2 rounded-full bg-surface-container-highest overflow-hidden">
+<div class="h-full bg-primary-container rounded-full w-[96%]"></div>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant mt-space-xs block">vs 14% traditional custom app downloads</span>
+</div>
+</div>
+<!-- Pillar 2 -->
+<div class="rounded-xl bg-surface-container-low p-space-xl shadow-[-8px_-8px_20px_#ffffff,8px_8px_20px_#d1d9e6] flex flex-col justify-between group hover:shadow-[-12px_-12px_24px_#ffffff,12px_12px_24px_#d1d9e6] transition-all">
+<div>
+<div class="w-14 h-14 rounded-full bg-surface-container-lowest shadow-[-4px_-4px_8px_#ffffff,4px_4px_8px_#d1d9e6] flex items-center justify-center text-primary mb-space-lg group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[28px]">contactless</span>
+</div>
+<h3 class="font-headline-md text-headline-md font-semibold text-on-surface mb-space-sm">
+                Smart Tap 2.0 &amp; Optical Scanning
+              </h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-space-lg">
+                Certified Google Smart Tap 2.0 protocol synchronizes pass credentials via encrypted NFC in 200 milliseconds. Seamlessly integrates with Toast, Square, Clover, and NCR, or use our zero-hardware optical scanner.
+              </p>
+</div>
+<!-- Tactile Interactive Visual Element -->
+<div class="p-space-md rounded-lg bg-surface shadow-[inset_3px_3px_7px_#d1d9e6,inset_-3px_-3px_7px_#ffffff]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-label-sm text-label-sm font-bold text-on-surface">Line Speed Improvement</span>
+<span class="font-label-sm text-label-sm text-tertiary font-bold">-12 sec/txn</span>
+</div>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="px-space-xs py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-sm text-label-sm shadow-[-1px_-1px_3px_#ffffff,1px_1px_3px_#d1d9e6]">Toast</span>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-sm text-label-sm shadow-[-1px_-1px_3px_#ffffff,1px_1px_3px_#d1d9e6]">Square</span>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-sm text-label-sm shadow-[-1px_-1px_3px_#ffffff,1px_1px_3px_#d1d9e6]">Clover</span>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-lowest text-on-surface font-label-sm text-label-sm shadow-[-1px_-1px_3px_#ffffff,1px_1px_3px_#d1d9e6]">Verifone</span>
+</div>
+</div>
+</div>
+<!-- Pillar 3 -->
+<div class="rounded-xl bg-surface-container-low p-space-xl shadow-[-8px_-8px_20px_#ffffff,8px_8px_20px_#d1d9e6] flex flex-col justify-between group hover:shadow-[-12px_-12px_24px_#ffffff,12px_12px_24px_#d1d9e6] transition-all">
+<div>
+<div class="w-14 h-14 rounded-full bg-surface-container-lowest shadow-[-4px_-4px_8px_#ffffff,4px_4px_8px_#d1d9e6] flex items-center justify-center text-primary mb-space-lg group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[28px]">radar</span>
+</div>
+<h3 class="font-headline-md text-headline-md font-semibold text-on-surface mb-space-sm">
+                Autonomous Geo-Fencing &amp; Beacons
+              </h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-space-lg">
+                Trigger high-priority lockscreen notifications when loyalty members walk within 300 meters of your venue. Bluetooth Low Energy (BLE) Eddystone beacons instantly highlight current happy hours and personal perks.
+              </p>
+</div>
+<!-- Tactile Interactive Visual Element -->
+<div class="p-space-md rounded-lg bg-surface shadow-[inset_3px_3px_7px_#d1d9e6,inset_-3px_-3px_7px_#ffffff]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-label-sm text-label-sm font-bold text-on-surface">Proximity Open Rate</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">64.3%</span>
+</div>
+<div class="w-full h-2 rounded-full bg-surface-container-highest overflow-hidden">
+<div class="h-full bg-primary-container rounded-full w-[64%]"></div>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant mt-space-xs block">4.2x higher conversion than standard email</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- 4. INTERACTIVE FEATURE DEEP-DIVE & TERMINAL SHOWCASE -->
+<section class="w-full px-margin-mobile lg:px-margin py-space-2xl bg-surface-container-low/60">
+<div class="w-full max-w-6xl mx-auto">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-center">
+<!-- Left: Tab Selectors -->
+<div class="lg:col-span-5 flex flex-col gap-space-md">
+<span class="font-label-md text-label-md uppercase tracking-wider text-primary font-semibold">Architectural Deep Dive</span>
+<h2 class="font-headline-lg text-headline-lg-mobile lg:text-headline-lg font-bold text-on-surface">
+              Precision Tooling For High-Volume Venues
+            </h2>
+<p class="font-body-md text-body-md text-on-surface-variant mb-space-md">
+              Engineered with microsecond responsiveness. Review live transaction telemetry, configure automated geo-fences, and dynamically update pass metadata without app updates.
+            </p>
+<!-- Interactive Tab Selectors -->
+<div class="flex flex-col gap-space-sm" id="feature-tabs">
+<button class="feature-tab text-left p-space-md rounded-lg bg-surface-container-lowest shadow-[-4px_-4px_10px_#ffffff,4px_4px_10px_#d1d9e6] flex items-center justify-between transition-all" onclick="switchTab(0)">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-[22px]">contactless</span>
+<div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface font-semibold">Smart Tap 2.0 Protocol</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Instant NFC verification &amp; crypto handshake</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary text-[20px]">chevron_right</span>
+</button>
+<button class="feature-tab text-left p-space-md rounded-lg bg-surface shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] flex items-center justify-between transition-all" onclick="switchTab(1)">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-[22px]">sensors</span>
+<div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface font-semibold">Geo-Radius Push Beacons</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Lockscreen trigger when customer enters 300m</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">chevron_right</span>
+</button>
+<button class="feature-tab text-left p-space-md rounded-lg bg-surface shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] flex items-center justify-between transition-all" onclick="switchTab(2)">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-[22px]">palette</span>
+<div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface font-semibold">Pass Studio Archetypes</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Drag-and-drop wallet design with live preview</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">chevron_right</span>
+</button>
+<button class="feature-tab text-left p-space-md rounded-lg bg-surface shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] flex items-center justify-between transition-all" onclick="switchTab(3)">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-[22px]">sync_alt</span>
+<div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface font-semibold">Real-Time POS Telemetry</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Bi-directional webhook sync with check balances</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Right: Porcelain Terminal Mockup -->
+<div class="lg:col-span-7">
+<div class="rounded-xl bg-surface-container-low p-space-lg shadow-[-10px_-10px_24px_#ffffff,10px_10px_24px_#d1d9e6] relative">
+<!-- Terminal Head Unit -->
+<div class="flex items-center justify-between pb-space-md mb-space-md border-b border-surface-container-highest">
+<div class="flex items-center gap-space-sm">
+<div class="w-3 h-3 rounded-full bg-primary-container shadow-[0_0_8px_#ff5722]"></div>
+<span class="font-label-sm text-label-sm uppercase tracking-wider font-bold text-on-surface">TERMINAL #402 • BANLIS DOWNTOWN</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-space-sm py-0.5 rounded-full bg-surface-container-lowest font-label-sm text-label-sm text-on-surface shadow-[-2px_-2px_4px_#ffffff,2px_2px_4px_#d1d9e6]">NFC Ready</span>
+<span class="px-space-sm py-0.5 rounded-full bg-primary-container text-on-tertiary font-label-sm text-label-sm shadow-[0_0_10px_rgba(255,87,34,0.35)]">ONLINE</span>
+</div>
+</div>
+<!-- Terminal Cockpit View -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<!-- Optical/NFC Scanning Surface -->
+<div class="rounded-lg bg-surface p-space-md shadow-[inset_3px_3px_8px_#d1d9e6,inset_-3px_-3px_8px_#ffffff] flex flex-col items-center justify-center min-h-[260px] text-center relative">
+<!-- Target Scanning Reticle -->
+<div class="w-32 h-32 rounded-full border-2 border-dashed border-primary-container/40 flex items-center justify-center relative animate-spin [animation-duration:16s]">
+<div class="w-20 h-20 rounded-full bg-surface-container-lowest shadow-[-3px_-3px_6px_#ffffff,3px_3px_6px_#d1d9e6] flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-[32px]">contactless</span>
+</div>
+</div>
+<p class="font-headline-sm text-headline-sm font-bold text-on-surface mt-space-md" id="terminal-state-title">Smart Tap NFC Active</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant max-w-[200px]" id="terminal-state-desc">Customer pass auto-detected in 0.18s</p>
+<div class="mt-space-sm px-space-sm py-0.5 rounded-full bg-surface-container-lowest shadow-[-2px_-2px_4px_#ffffff,2px_2px_4px_#d1d9e6] text-primary font-label-sm text-label-sm font-semibold">
+                    AES-256 Auth Verified
+                  </div>
+</div>
+<!-- Live Transaction Ledger Stream -->
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant font-semibold">Recent Wallet Handshakes</span>
+<div class="p-space-sm rounded-lg bg-surface-container-lowest shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] flex items-center justify-between">
+<div>
+<p class="font-label-sm text-label-sm font-bold text-on-surface">Alex R. (Gold VIP)</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Table 12 • 2x Cold Brew</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary font-bold">+120 PTS</span>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-lowest shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] flex items-center justify-between">
+<div>
+<p class="font-label-sm text-label-sm font-bold text-on-surface">Sarah K. (Silver)</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Bar • Avocado Toast Box</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary font-bold">+85 PTS</span>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-lowest shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] flex items-center justify-between">
+<div>
+<p class="font-label-sm text-label-sm font-bold text-on-surface">Michael D. (First Tap)</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Takeout • Citrus Brioche</p>
+</div>
+<span class="font-label-sm text-label-sm text-tertiary font-bold">PASS SAVED</span>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-lowest shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] flex items-center justify-between">
+<div>
+<p class="font-label-sm text-label-sm font-bold text-on-surface">Liam W. (Platinum)</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Table 4 • Signature Tasting</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary font-bold">REWARD USED</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- 5. ROI & REVENUE CALCULATOR WIDGET -->
+<section class="w-full px-margin-mobile lg:px-margin py-space-2xl" id="calculator">
+<div class="w-full max-w-5xl mx-auto rounded-xl bg-surface-container-low p-space-lg lg:p-space-2xl shadow-[-10px_-10px_26px_#ffffff,10px_10px_26px_#d1d9e6]">
+<div class="text-center max-w-2xl mx-auto mb-space-xl">
+<span class="font-label-md text-label-md uppercase tracking-wider text-primary font-semibold">Immediate Business Impact</span>
+<h2 class="font-headline-lg text-headline-lg-mobile lg:text-headline-lg font-bold text-on-surface mt-space-xs">
+            Estimate Your Monthly Incremental Revenue
+          </h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-space-xs">
+            Calculate the exact top-line expansion generated by converting anonymous walk-ins into Google Wallet cardholders.
+          </p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-center">
+<!-- Sliders Column -->
+<div class="lg:col-span-7 flex flex-col gap-space-lg">
+<!-- Slider 1: Locations -->
+<div class="p-space-md rounded-lg bg-surface shadow-[inset_2px_2px_6px_#d1d9e6,inset_-2px_-2px_6px_#ffffff]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-headline-sm text-headline-sm font-semibold text-on-surface">Store Locations</span>
+<span class="font-headline-md text-headline-md font-bold text-primary" id="val-locations">3 Stores</span>
+</div>
+<input class="w-full accent-primary-container cursor-pointer" id="input-locations" max="25" min="1" oninput="calculateROI()" type="range" value="3"/>
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant mt-1">
+<span>1 Location</span>
+<span>25 Locations</span>
+</div>
+</div>
+<!-- Slider 2: Daily Guests -->
+<div class="p-space-md rounded-lg bg-surface shadow-[inset_2px_2px_6px_#d1d9e6,inset_-2px_-2px_6px_#ffffff]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-headline-sm text-headline-sm font-semibold text-on-surface">Daily Diners per Store</span>
+<span class="font-headline-md text-headline-md font-bold text-primary" id="val-diners">350 Guests</span>
+</div>
+<input class="w-full accent-primary-container cursor-pointer" id="input-diners" max="1500" min="50" oninput="calculateROI()" step="25" type="range" value="350"/>
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant mt-1">
+<span>50 Diners</span>
+<span>1,500 Diners</span>
+</div>
+</div>
+<!-- Slider 3: Average Ticket -->
+<div class="p-space-md rounded-lg bg-surface shadow-[inset_2px_2px_6px_#d1d9e6,inset_-2px_-2px_6px_#ffffff]">
+<div class="flex items-center justify-between mb-space-xs">
+<span class="font-headline-sm text-headline-sm font-semibold text-on-surface">Average Guest Check</span>
+<span class="font-headline-md text-headline-md font-bold text-primary" id="val-ticket">$38</span>
+</div>
+<input class="w-full accent-primary-container cursor-pointer" id="input-ticket" max="150" min="12" oninput="calculateROI()" step="1" type="range" value="38"/>
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant mt-1">
+<span>$12 / check</span>
+<span>$150 / check</span>
+</div>
+</div>
+</div>
+<!-- Output Dial Column -->
+<div class="lg:col-span-5 flex flex-col items-center justify-center p-space-xl rounded-xl bg-surface-container-lowest shadow-[-6px_-6px_16px_#ffffff,6px_6px_16px_#d1d9e6] text-center">
+<div class="w-16 h-16 rounded-full bg-surface-container-low shadow-[-3px_-3px_8px_#ffffff,3px_3px_8px_#d1d9e6] flex items-center justify-center text-primary-container mb-space-md">
+<span class="material-symbols-outlined text-[32px]">payments</span>
+</div>
+<span class="font-label-sm text-label-sm uppercase tracking-widest text-on-surface-variant font-semibold">Projected Monthly Revenue Lift</span>
+<div class="font-display-xl-mobile sm:font-display-xl text-display-xl-mobile sm:text-display-xl font-bold text-primary mt-space-xs tracking-tight" id="output-revenue">
+              +$14,364
+            </div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-space-xs mb-space-lg">
+              Based on empirical 18% repeat visit lift and 0% App Store drop-off.
+            </p>
+<div class="w-full py-space-sm px-space-md rounded-lg bg-surface shadow-[inset_2px_2px_4px_#d1d9e6,inset_-2px_-2px_4px_#ffffff] flex items-center justify-between">
+<span class="font-label-sm text-label-sm font-bold text-on-surface">Calculated Payback Period:</span>
+<span class="font-label-sm text-label-sm font-bold text-tertiary">3.8x ROI within 45 days</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- 6. TESTIMONIALS & CASE STUDIES -->
+<section class="w-full px-margin-mobile lg:px-margin py-space-2xl">
+<div class="w-full max-w-6xl mx-auto">
+<div class="flex flex-col items-center text-center mb-space-2xl">
+<span class="font-label-md text-label-md uppercase tracking-wider text-primary font-semibold">Operator Case Studies</span>
+<h2 class="font-headline-lg text-headline-lg-mobile lg:text-headline-lg font-bold text-on-surface mt-space-xs">
+            Loved By Michelin Starred Concepts &amp; Fast Casual Chains Alike
+          </h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-lg">
+<!-- Card 1 -->
+<div class="p-space-xl rounded-xl bg-surface-container-low shadow-[-6px_-6px_16px_#ffffff,6px_6px_16px_#d1d9e6] flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-space-xs text-primary mb-space-md">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-relaxed italic mb-space-lg">
+                “Our repeat dining frequency leaped by 42% after switching to PassLoyal’s Google Wallet passes. Zero app download friction meant 9 out of 10 guests actually added the card right at the table.”
+              </p>
+</div>
+<div class="flex items-center gap-space-md pt-space-md border-t border-surface-container-highest">
+<img class="w-12 h-12 rounded-full object-cover shadow-[-2px_-2px_4px_#ffffff,2px_2px_4px_#d1d9e6]" data-alt="Close up warm studio portrait of Chef Marcus Vance wearing high quality black chef apron in modern restaurant kitchen with soft warm lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyTpItx20Pes0eUKjaX8jMBUoKwgDYurCYRsyGKm-Syd-MdiutIgIXKLuYRvTAjtsK44KP1yGLv7NJ5u9okApU2n9trRokaZndpJm7y7KITFIbHL-BuuFpOqW8Xd7VKQHJ4NDY-p2KFANXxlV1lnRxNGCMREDs0H4iYxuOHBuR-7pnMinJ9K1posinO4Zz-Ud0Yk91J__MVbe0nZmm1ZIo1nWzInM4m02bYiLGKA0"/>
+<div>
+<p class="font-headline-sm text-headline-sm font-bold text-on-surface">Chef Marcus Vance</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Owner, Banlis Bistro (3 Locations)</p>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="p-space-xl rounded-xl bg-surface-container-low shadow-[-6px_-6px_16px_#ffffff,6px_6px_16px_#d1d9e6] flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-space-xs text-primary mb-space-md">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-relaxed italic mb-space-lg">
+                “Smart Tap cut our counter line wait times during peak dinner rush by 12 seconds per transaction. Cashiers never have to ask for phone numbers or fumble with barcode scanners anymore.”
+              </p>
+</div>
+<div class="flex items-center gap-space-md pt-space-md border-t border-surface-container-highest">
+<img class="w-12 h-12 rounded-full object-cover shadow-[-2px_-2px_4px_#ffffff,2px_2px_4px_#d1d9e6]" data-alt="Professional headshot of Elena Rostova, female hospitality executive smiling in sunlit contemporary architectural hotel lobby" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYW6Q_1y_8HA5BomwFKgbNeQgqNTJ0q87jT0F2DHyvT75lMglIih0ZPx1oL_zZYxYUSQp31wK3ywhBNJH2yj-QLcEKJtFaMuUPpz0lYxSFbdPOJ1t6AXxCVqYZTKtUr1DJxAS9ghGeKlNeDaCplmsuDicj3VnHIXPDynTb2jB4kNkRZKcKWoOZdFy3f_-ZGiQFqN_LZkTnNzxYOquHuwU0shUMymvPOJY_mfhbF3s"/>
+<div>
+<p class="font-headline-sm text-headline-sm font-bold text-on-surface">Elena Rostova</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">VP Operations, Artisanal Hospitality</p>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="p-space-xl rounded-xl bg-surface-container-low shadow-[-6px_-6px_16px_#ffffff,6px_6px_16px_#d1d9e6] flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-space-xs text-primary mb-space-md">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-relaxed italic mb-space-lg">
+                “The 300-meter lockscreen geo-push notification singlehandedly filled our Tuesday happy hour lull. PassLoyal acts like a private billboard right inside the diner's pocket.”
+              </p>
+</div>
+<div class="flex items-center gap-space-md pt-space-md border-t border-surface-container-highest">
+<img class="w-12 h-12 rounded-full object-cover shadow-[-2px_-2px_4px_#ffffff,2px_2px_4px_#d1d9e6]" data-alt="Portrait of David Chen modern entrepreneur in casual linen shirt standing inside artisanal coffee roastery with soft warm bokeh" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZay7iW3gawTZVytOBoiDpxFd736A0s3x9l1fHy4FmJ-ULZCSzLU966FbpDCtEnOge4p54JpT2CdlObdRm9ArG1EiWFQHIiEFqudEM8o_hGCvml5F1AT_sBZx8s45NdTQjNYWVztDNupVqnUJcvKiGhfh8sfD9h1sFVDPbQd7BzBqOPaNtfSgeDI4390bGlrCINb8i6d9WDcLWZvfCHm3nKAyGsZ4PE5KyVfcEtIY"/>
+<div>
+<p class="font-headline-sm text-headline-sm font-bold text-on-surface">David Chen</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Founder, Urban Roastery (8 Cafes)</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- 7. COMPARISON TABLE -->
+<section class="w-full px-margin-mobile lg:px-margin py-space-2xl bg-surface-container-low/60">
+<div class="w-full max-w-5xl mx-auto">
+<div class="flex flex-col items-center text-center mb-space-xl">
+<span class="font-label-md text-label-md uppercase tracking-wider text-primary font-semibold">Architectural Comparison</span>
+<h2 class="font-headline-lg text-headline-lg-mobile lg:text-headline-lg font-bold text-on-surface mt-space-xs">
+            Why Custom Apps Are Failing Restaurants
+          </h2>
+</div>
+<div class="w-full overflow-x-auto">
+<table class="w-full text-left rounded-xl bg-surface-container-low shadow-[-6px_-6px_16px_#ffffff,6px_6px_16px_#d1d9e6] overflow-hidden">
+<thead>
+<tr class="border-b border-surface-container-highest">
+<th class="p-space-lg font-headline-sm text-headline-sm text-on-surface font-semibold">Dimension</th>
+<th class="p-space-lg font-headline-sm text-headline-sm text-primary font-bold bg-surface-container-lowest/80">PassLoyal Wallet</th>
+<th class="p-space-lg font-headline-sm text-headline-sm text-on-surface-variant font-medium">Custom Mobile App</th>
+<th class="p-space-lg font-headline-sm text-headline-sm text-on-surface-variant font-medium">Plastic Stamp Card</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-highest font-body-md text-body-md text-on-surface">
+<tr>
+<td class="p-space-md font-semibold">App Store Download Friction</td>
+<td class="p-space-md text-primary font-bold bg-surface-container-lowest/80 flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">check_circle</span> 0% (Saved in 1 Tap)
+                </td>
+<td class="p-space-md text-on-surface-variant">86% Drop-off Rate</td>
+<td class="p-space-md text-on-surface-variant">None (Physical)</td>
+</tr>
+<tr>
+<td class="p-space-md font-semibold">Lockscreen Geo-Proximity</td>
+<td class="p-space-md text-primary font-bold bg-surface-container-lowest/80 flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">check_circle</span> Native 300m Beacons
+                </td>
+<td class="p-space-md text-on-surface-variant">Requires App Permissions</td>
+<td class="p-space-md text-on-surface-variant">Impossible</td>
+</tr>
+<tr>
+<td class="p-space-md font-semibold">NFC Smart Tap Speed</td>
+<td class="p-space-md text-primary font-bold bg-surface-container-lowest/80 flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">check_circle</span> 0.2s Handshake
+                </td>
+<td class="p-space-md text-on-surface-variant">Slow QR Screen Unlock</td>
+<td class="p-space-md text-on-surface-variant">Manual Punch Card</td>
+</tr>
+<tr>
+<td class="p-space-md font-semibold">Launch Timeline</td>
+<td class="p-space-md text-primary font-bold bg-surface-container-lowest/80 flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">check_circle</span> Under 15 Minutes
+                </td>
+<td class="p-space-md text-on-surface-variant">4-6 Months Dev Work</td>
+<td class="p-space-md text-on-surface-variant">2-3 Weeks Printing</td>
+</tr>
+<tr>
+<td class="p-space-md font-semibold">Maintenance &amp; Apple/Google Fees</td>
+<td class="p-space-md text-primary font-bold bg-surface-container-lowest/80 flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">check_circle</span> $0 / Included
+                </td>
+<td class="p-space-md text-on-surface-variant">$25k+ Annual Dev Costs</td>
+<td class="p-space-md text-on-surface-variant">Constant Reprinting</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<!-- 8. HIGH-IMPACT FINAL CTA SECTION -->
+<section class="w-full px-margin-mobile lg:px-margin py-space-2xl">
+<div class="w-full max-w-5xl mx-auto rounded-xl bg-surface-container-lowest p-space-xl lg:p-space-2xl shadow-[-12px_-12px_28px_#ffffff,12px_12px_28px_#d1d9e6] relative overflow-hidden text-center flex flex-col items-center">
+<!-- Subtle Radiant Background Orb -->
+<div class="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary-container/20 rounded-full blur-3xl pointer-events-none"></div>
+<div class="w-16 h-16 rounded-full bg-surface shadow-[-4px_-4px_8px_#ffffff,4px_4px_8px_#d1d9e6] flex items-center justify-center text-primary mb-space-lg">
+<span class="material-symbols-outlined text-[32px]">contactless</span>
+</div>
+<h2 class="font-display-xl text-display-xl-mobile lg:text-headline-lg font-bold text-on-surface max-w-2xl tracking-tight leading-tight">
+          Ready to turn foot traffic into VIP retention?
+        </h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl mt-space-sm mb-space-xl">
+          Deploy Google Wallet passes across your locations today. No hardware replacements, zero customer download barriers.
+        </p>
+<!-- CTA Buttons -->
+<div class="flex flex-col sm:flex-row items-center gap-space-md mb-space-lg w-full sm:w-auto">
+<a class="w-full sm:w-auto px-space-xl py-space-md rounded-full bg-primary-container text-on-tertiary font-headline-sm text-headline-sm shadow-[0_4px_24px_rgba(255,87,34,0.4),-3px_-3px_8px_#ffffff] hover:bg-secondary-container transition-all flex items-center justify-center gap-space-sm group" href="#">
+<span>Get Started with 100 Free Passes</span>
+<span class="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1">arrow_forward</span>
+</a>
+<a class="w-full sm:w-auto px-space-xl py-space-md rounded-full bg-surface-container-low text-on-surface font-headline-sm text-headline-sm shadow-[-4px_-4px_10px_#ffffff,4px_4px_10px_#d1d9e6] hover:shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] transition-all flex items-center justify-center gap-space-xs" href="#">
+<span class="material-symbols-outlined text-primary text-[20px]">calendar_month</span>
+<span>Schedule a 15-Minute Live Demo</span>
+</a>
+</div>
+<!-- Guarantees Pill -->
+<div class="flex flex-wrap items-center justify-center gap-space-md text-on-surface-variant font-label-sm text-label-sm">
+<span class="flex items-center gap-1 font-semibold text-on-surface">
+<span class="material-symbols-outlined text-primary text-[16px]">check</span> No credit card required
+          </span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1 font-semibold text-on-surface">
+<span class="material-symbols-outlined text-primary text-[16px]">check</span> Plug-and-play POS compatibility
+          </span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1 font-semibold text-on-surface">
+<span class="material-symbols-outlined text-primary text-[16px]">check</span> 5-minute automated setup
+          </span>
+</div>
+</div>
+</section>
+</div>
+</div>
+<script>
+  // Tab Switcher for Deep Dive Section
+  function switchTab(index) {
+    const tabs = document.querySelectorAll('.feature-tab');
+    const title = document.getElementById('terminal-state-title');
+    const desc = document.getElementById('terminal-state-desc');
+
+    const states = [
+      {
+        title: 'Smart Tap NFC Active',
+        desc: 'Customer pass auto-detected in 0.18s'
+      },
+      {
+        title: 'Eddystone Beacon Sync',
+        desc: 'Lockscreen notification broadcasted to nearby patrons'
+      },
+      {
+        title: 'Pass Studio Preview',
+        desc: 'Real-time JSON schema pushed to Google Wallet cache'
+      },
+      {
+        title: 'Live POS Webhook Stream',
+        desc: 'Check #4819 accrued 140 pts via Toast API'
+      }
+    ];
+
+    tabs.forEach((tab, i) => {
+      if (i === index) {
+        tab.classList.remove('bg-surface', 'shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]');
+        tab.classList.add('bg-surface-container-lowest', 'shadow-[-4px_-4px_10px_#ffffff,4px_4px_10px_#d1d9e6]');
+      } else {
+        tab.classList.remove('bg-surface-container-lowest', 'shadow-[-4px_-4px_10px_#ffffff,4px_4px_10px_#d1d9e6]');
+        tab.classList.add('bg-surface', 'shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]');
+      }
+    });
+
+    if (states[index]) {
+      title.innerText = states[index].title;
+      desc.innerText = states[index].desc;
+    }
+  }
+
+  // Interactive ROI Calculator Logic
+  function calculateROI() {
+    const locInput = document.getElementById('input-locations');
+    const dinInput = document.getElementById('input-diners');
+    const tickInput = document.getElementById('input-ticket');
+
+    const locVal = parseInt(locInput.value);
+    const dinVal = parseInt(dinInput.value);
+    const tickVal = parseInt(tickInput.value);
+
+    document.getElementById('val-locations').innerText = locVal + (locVal === 1 ? ' Store' : ' Stores');
+    document.getElementById('val-diners').innerText = dinVal.toLocaleString() + ' Guests';
+    document.getElementById('val-ticket').innerText = '$' + tickVal;
+
+    // Model: 18% repeat visit lift on 20% enrolled diners = 3.6% incremental spend across total base
+    const totalMonthlyDiners = locVal * dinVal * 30;
+    const grossMonthlyVolume = totalMonthlyDiners * tickVal;
+    const incrementalRevenue = Math.round(grossMonthlyVolume * 0.036);
+
+    document.getElementById('output-revenue').innerText = '+$' + incrementalRevenue.toLocaleString();
+  }
+
+  // Dial Counter Animation
+  let counterValue = 84920;
+  setInterval(() => {
+    counterValue += Math.floor(Math.random() * 3) + 1;
+    const counterEl = document.getElementById('hero-counter');
+    if (counterEl) {
+      counterEl.innerText = counterValue.toLocaleString();
+    }
+  }, 3200);
+</script></main><footer class="w-full bg-surface-container-low pt-space-2xl pb-space-xl"><div class="w-full px-margin-mobile lg:px-margin"><div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-space-xl pb-space-xl"><div class="col-span-2"><div class="flex items-center gap-space-sm mb-space-md"><div class="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6]"><span class="material-symbols-outlined text-primary text-[18px]">contactless</span></div><span class="font-headline-sm text-headline-sm font-semibold text-on-surface">PassLoyal</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm mb-space-lg">Next-generation smart loyalty infrastructure molded for digital wallets, frictionless taps, and intelligent micro-location beacons.</p><div class="flex items-center gap-space-sm"><div class="px-space-md py-space-xs rounded-full bg-surface-container-lowest shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] flex items-center gap-space-xs text-on-surface"><span class="material-symbols-outlined text-primary text-[18px]">account_balance_wallet</span><span class="font-label-sm text-label-sm">Google Wallet Certified</span></div><div class="px-space-md py-space-xs rounded-full bg-surface-container-lowest shadow-[-2px_-2px_6px_#ffffff,2px_2px_6px_#d1d9e6] flex items-center gap-space-xs text-on-surface"><span class="material-symbols-outlined text-tertiary text-[18px]">verified_user</span><span class="font-label-sm text-label-sm">SOC2 Type II</span></div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md font-semibold">Product</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li class="hover:text-on-surface transition-colors cursor-pointer">Smart Tap Engine</li><li class="hover:text-on-surface transition-colors cursor-pointer">BLE Beacons</li><li class="hover:text-on-surface transition-colors cursor-pointer">Pass Designer</li><li class="hover:text-on-surface transition-colors cursor-pointer">Dynamic Messaging</li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md font-semibold">Developers</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li class="hover:text-on-surface transition-colors cursor-pointer">API Documentation</li><li class="hover:text-on-surface transition-colors cursor-pointer">Webhooks</li><li class="hover:text-on-surface transition-colors cursor-pointer">SDK References</li><li class="hover:text-on-surface transition-colors cursor-pointer">Sandbox Environment</li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md font-semibold">Company</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li class="hover:text-on-surface transition-colors cursor-pointer">About Us</li><li class="hover:text-on-surface transition-colors cursor-pointer">Customers</li><li class="hover:text-on-surface transition-colors cursor-pointer">Security &amp; Privacy</li><li class="hover:text-on-surface transition-colors cursor-pointer">Contact Sales</li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md font-semibold">Legal</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li class="hover:text-on-surface transition-colors cursor-pointer">Privacy Policy</li><li class="hover:text-on-surface transition-colors cursor-pointer">Terms of Service</li><li class="hover:text-on-surface transition-colors cursor-pointer">DPA Agreement</li><li class="hover:text-on-surface transition-colors cursor-pointer">Compliance Hub</li></ul></div></div><div class="pt-space-lg flex flex-col md:flex-row items-center justify-between gap-space-md"><p class="font-body-sm text-body-sm text-on-surface-variant">© 2025 PassLoyal Inc. All rights reserved. Precision wallet automation systems.</p><div class="flex items-center gap-space-lg text-on-surface-variant"><span class="font-label-sm text-label-sm uppercase tracking-wider">ISO/IEC 27001</span><span class="font-label-sm text-label-sm uppercase tracking-wider">PCI-DSS L1</span><span class="font-label-sm text-label-sm uppercase tracking-wider">GDPR Ready</span></div></div></div></footer></body></html>

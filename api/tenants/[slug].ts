@@ -20,6 +20,12 @@ export default async function handler(req: any, res: any) {
             t.archetype, 
             t.class_id, 
             t.issuer_id,
+            t.owner_name,
+            t.owner_email,
+            t.status,
+            t.plan,
+            t.pass_limit,
+            t.created_at,
             COUNT(m.id)::int as pass_count,
             COALESCE(SUM(m.points)::int, 0) as total_points
           FROM tenants t
@@ -27,7 +33,7 @@ export default async function handler(req: any, res: any) {
           WHERE t.slug = ${slug} 
              OR t.id = ${slug} 
              OR t.slug = ${slug.replace(/-bistro$/, '')}
-          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id
+          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
           LIMIT 1;
         `;
 
@@ -37,16 +43,19 @@ export default async function handler(req: any, res: any) {
             id: r.id,
             slug: r.slug,
             name: r.name,
+            ownerName: r.owner_name || 'Store Manager',
+            ownerEmail: r.owner_email || `${r.slug}@oloyal.com`,
             legalEntity: `${r.name} LLC`,
             brandColor: r.color || '#ff5722',
             logoUrl: r.logo,
             archetype: r.archetype || 'loyalty',
             classId: r.class_id,
-            plan: 'growth',
-            passLimit: 5000,
+            plan: r.plan || 'growth',
+            passLimit: Number(r.pass_limit || (r.plan === 'scale' ? 50000 : r.plan === 'starter' ? 500 : 5000)),
             passCount: Number(r.pass_count || 0),
             totalPoints: Number(r.total_points || 0),
-            status: 'active',
+            status: r.status || 'Active',
+            createdAt: r.created_at || new Date().toISOString(),
           });
         }
       } catch (err) {
@@ -58,19 +67,24 @@ export default async function handler(req: any, res: any) {
       id: 't-banlis',
       slug,
       name: slug.toUpperCase(),
+      ownerName: 'Store Manager',
+      ownerEmail: `${slug}@oloyal.com`,
       brandColor: '#ff5722',
       logoUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
       archetype: 'loyalty',
       classId: '3388000000022258509.tenant_t-banlis_loyalty_class',
+      plan: 'growth',
+      passLimit: 5000,
       passCount: 0,
       totalPoints: 0,
-      status: 'active',
+      status: 'Active',
     });
   }
 
   if (req.method === 'PATCH' || req.method === 'PUT') {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const { name, logoUrl, brandColor, archetype } = body;
+    const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail } = body;
+    const computedLimit = passLimit || pass_limit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null);
 
     if (sql) {
       try {
@@ -80,9 +94,14 @@ export default async function handler(req: any, res: any) {
             name = COALESCE(${name || null}, name),
             logo = COALESCE(${logoUrl || null}, logo),
             color = COALESCE(${brandColor || null}, color),
-            archetype = COALESCE(${archetype || null}, archetype)
+            archetype = COALESCE(${archetype || null}, archetype),
+            status = COALESCE(${status || null}, status),
+            plan = COALESCE(${plan || null}, plan),
+            pass_limit = COALESCE(${computedLimit || null}, pass_limit),
+            owner_name = COALESCE(${ownerName || null}, owner_name),
+            owner_email = COALESCE(${ownerEmail || null}, owner_email)
           WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
-          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id;
+          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
         `;
 
         if (rows.length > 0) {
@@ -97,8 +116,13 @@ export default async function handler(req: any, res: any) {
               logoUrl: r.logo,
               archetype: r.archetype,
               classId: r.class_id,
+              status: r.status,
+              plan: r.plan,
+              passLimit: r.pass_limit,
+              ownerName: r.owner_name,
+              ownerEmail: r.owner_email,
             },
-            message: 'Tenant customization saved to Neon Postgres',
+            message: 'Tenant settings and status updated in Neon Postgres',
           });
         }
       } catch (err: any) {
