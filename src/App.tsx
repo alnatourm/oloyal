@@ -12,6 +12,7 @@ import { CustomerEnrollmentView } from './views/CustomerEnrollmentView';
 import { MerchantAuthView } from './views/MerchantAuthView';
 import { LandingPageView } from './views/LandingPageView';
 import { SuperAdminView } from './views/SuperAdminView';
+import { ProfileView } from './views/ProfileView';
 import { PrivacyPolicyView } from './views/PrivacyPolicyView';
 import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
@@ -33,6 +34,9 @@ export default function App() {
   // Multi-Tenant Context State
   const [activeTenantSlug, setActiveTenantSlug] = useState<string>(() => {
     return localStorage.getItem('passloyal_tenant_slug') || 'banlis';
+  });
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    return localStorage.getItem('passloyal_user_email') || '';
   });
   const [tenants, setTenants] = useState<Array<{ id: string; slug: string; name: string; logoUrl?: string; brandColor?: string }>>([]);
 
@@ -74,8 +78,10 @@ export default function App() {
 
   const handleLogout = () => {
     setUserRole('merchant');
+    setUserEmail('');
     localStorage.removeItem('passloyal_role');
     localStorage.removeItem('passloyal_token');
+    localStorage.removeItem('passloyal_user_email');
     setToastMessage('Signed out successfully.');
     setCurrentPath('landing');
     setTimeout(() => setToastMessage(null), 3000);
@@ -97,10 +103,14 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleLoginSuccess = (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant') => {
+  const handleLoginSuccess = (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant', email?: string) => {
     const assignedRole = role || (slug ? 'merchant' : 'super_admin');
     setUserRole(assignedRole);
     localStorage.setItem('passloyal_role', assignedRole);
+    if (email) {
+      setUserEmail(email);
+      localStorage.setItem('passloyal_user_email', email);
+    }
     if (slug) {
       setActiveTenantSlug(slug);
       localStorage.setItem('passloyal_tenant_slug', slug);
@@ -135,6 +145,7 @@ export default function App() {
             tenants={tenants}
             onSelectTenant={handleSelectTenant}
             onNavigateToAuth={() => setCurrentPath('merchant-auth')}
+            onNavigateToProfile={() => setCurrentPath('profile')}
             onNavigateToAdmin={() => setCurrentPath('super-admin')}
             onLogout={handleLogout}
             userRole={userRole}
@@ -201,6 +212,24 @@ export default function App() {
               setActiveTenantSlug(slug);
               setCurrentPath('dashboard');
             }}
+          />
+        )}
+
+        {currentPath === 'profile' && (
+          <ProfileView
+            userRole={userRole}
+            activeTenantSlug={activeTenantSlug}
+            userEmail={userEmail}
+            onProfileUpdated={(_updatedName, updatedEmail) => {
+              if (updatedEmail) {
+                setUserEmail(updatedEmail);
+                localStorage.setItem('passloyal_user_email', updatedEmail);
+              }
+              fetchTenants();
+              setToastMessage('Profile updated successfully.');
+              setTimeout(() => setToastMessage(null), 3500);
+            }}
+            onBack={() => setCurrentPath(isSuperAdmin ? 'super-admin' : 'dashboard')}
           />
         )}
 

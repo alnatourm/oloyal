@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { sounds } from '../utils/sound';
 
 interface MerchantAuthViewProps {
-  onLoginSuccess: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant') => void;
+  onLoginSuccess: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant', email?: string) => void;
   onNavigateToCustomerEnroll: () => void;
 }
 
@@ -75,14 +75,14 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
 
       // If backend detected Super Admin credentials
       if (data.role === 'super_admin' || data.role === 'admin') {
-        onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin');
+        onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin', data.user?.email || identifier.trim().toLowerCase());
         return;
       }
 
       // Otherwise merchant store login
       const targetSlug = data.tenant?.slug || 'banlis';
       const name = data.tenant?.name || 'Your Store';
-      onLoginSuccess(targetSlug, name, 'merchant');
+      onLoginSuccess(targetSlug, name, 'merchant', data.tenant?.ownerEmail || data.user?.email || identifier.trim().toLowerCase());
     } catch (err: any) {
       setLoginError(err.message || 'Login failed. Please verify credentials.');
     } finally {

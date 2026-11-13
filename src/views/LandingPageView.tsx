@@ -5,7 +5,7 @@ interface LandingPageViewProps {
   onNavigateToDashboard?: () => void;
   onNavigateToEnroll?: () => void;
   onOpenLoginModal?: () => void;
-  onLoginSuccess?: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant') => void;
+  onLoginSuccess?: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant', email?: string) => void;
 }
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({
@@ -133,7 +133,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
 
       if (data.role === 'super_admin' || data.role === 'admin') {
         if (onLoginSuccess) {
-          onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin');
+          onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin', data.user?.email || identifier.trim().toLowerCase());
         } else if (onNavigateToDashboard) {
           onNavigateToDashboard();
         }
@@ -143,7 +143,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       const targetSlug = data.tenant?.slug || 'banlis';
       const name = data.tenant?.name || 'Your Store';
       if (onLoginSuccess) {
-        onLoginSuccess(targetSlug, name, 'merchant');
+        onLoginSuccess(targetSlug, name, 'merchant', data.tenant?.ownerEmail || data.user?.email || identifier.trim().toLowerCase());
       } else if (onNavigateToDashboard) {
         onNavigateToDashboard();
       }

@@ -762,6 +762,12 @@ app.get('/api/tenants/:slug', async (req: Request, res: Response) => {
         t.archetype, 
         t.class_id, 
         t.issuer_id,
+        t.owner_name,
+        t.owner_email,
+        t.status,
+        t.plan,
+        t.pass_limit,
+        t.created_at,
         COUNT(m.id)::int as pass_count,
         COALESCE(SUM(m.points)::int, 0) as total_points
       FROM tenants t
@@ -769,7 +775,7 @@ app.get('/api/tenants/:slug', async (req: Request, res: Response) => {
       WHERE t.slug = ${slug} 
          OR t.id = ${slug} 
          OR t.slug = ${slug.replace(/-bistro$/, '')}
-      GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id
+      GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
       LIMIT 1;
     `;
 
@@ -779,16 +785,19 @@ app.get('/api/tenants/:slug', async (req: Request, res: Response) => {
         id: r.id,
         slug: r.slug,
         name: r.name,
+        ownerName: r.owner_name || 'Store Manager',
+        ownerEmail: r.owner_email || `${r.slug}@oloyal.com`,
         legalEntity: `${r.name} LLC`,
         brandColor: r.color || '#ff5722',
         logoUrl: r.logo,
         archetype: r.archetype || 'loyalty',
         classId: r.class_id,
-        plan: 'growth',
-        passLimit: 5000,
+        plan: r.plan || 'growth',
+        passLimit: Number(r.pass_limit || (r.plan === 'scale' ? 50000 : r.plan === 'starter' ? 500 : 5000)),
         passCount: Number(r.pass_count || 0),
         totalPoints: Number(r.total_points || 0),
-        status: 'active',
+        status: r.status || 'Active',
+        createdAt: r.created_at || new Date().toISOString(),
       });
     }
 
@@ -857,10 +866,10 @@ app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
           plan = COALESCE(${plan || null}, plan),
           pass_limit = COALESCE(${computedLimit || null}, pass_limit),
           owner_name = COALESCE(${ownerName || null}, owner_name),
-          owner_email = COALESCE(${ownerEmail || null}, owner_email),
+          owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email),
           password_hash = crypt(${rawPwd}, gen_salt('bf'))
         WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
-        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit;
+        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
       ` : await sql`
         UPDATE tenants
         SET 
@@ -872,26 +881,171 @@ app.patch('/api/tenants/:slug', async (req: Request, res: Response) => {
           plan = COALESCE(${plan || null}, plan),
           pass_limit = COALESCE(${computedLimit || null}, pass_limit),
           owner_name = COALESCE(${ownerName || null}, owner_name),
-          owner_email = COALESCE(${ownerEmail || null}, owner_email)
+          owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email)
         WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
-        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit;
+        RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
       `;
 
       if (rows.length > 0) {
+        const r = rows[0];
         return res.json({
           success: true,
-          tenant: rows[0],
+          tenant: {
+            id: r.id,
+            slug: r.slug,
+            name: r.name,
+            brandColor: r.color,
+            logoUrl: r.logo,
+            archetype: r.archetype,
+            classId: r.class_id,
+            status: r.status,
+            plan: r.plan,
+            passLimit: r.pass_limit,
+            ownerName: r.owner_name,
+            ownerEmail: r.owner_email,
+          },
           message: 'Tenant updated in Neon Postgres',
         });
       }
       return res.status(404).json({ error: 'Tenant not found' });
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Neon Postgres] PATCH /api/tenants/:slug error:', err);
-      return res.status(500).json({ error: 'Database connection failed' });
+      if (err?.code === '23505') {
+        return res.status(409).json({ error: 'Email already in use by another store' });
+      }
+      return res.status(500).json({ error: err?.message || 'Database connection failed' });
     }
   }
 
   return res.status(500).json({ error: 'Database not configured' });
+});
+
+// GET & PATCH /api/admin/profile - Super Admin Profile Settings
+let runtimeAdminProfile = {
+  displayName: 'Super Admin Master Issuer',
+  organization: 'PassLoyal OS Master Issuer',
+  phone: '',
+  contactEmail: '',
+};
+
+app.get('/api/admin/profile', async (_req: Request, res: Response) => {
+  const email = (process.env.SUPER_ADMIN_EMAIL || runtimeAdminProfile.contactEmail || '').trim();
+  if (sql) {
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS platform_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `;
+      const rows = await sql`
+        SELECT key, value FROM platform_settings
+        WHERE key IN ('admin_display_name', 'admin_organization', 'admin_phone', 'admin_contact_email', 'admin_issuer_id', 'admin_service_account');
+      `;
+      const map: Record<string, string> = {};
+      rows.forEach((r: any) => {
+        map[r.key] = r.value;
+      });
+      return res.json({
+        email: email || map.admin_contact_email || '',
+        displayName: map.admin_display_name || runtimeAdminProfile.displayName,
+        organization: map.admin_organization || runtimeAdminProfile.organization,
+        phone: map.admin_phone || runtimeAdminProfile.phone,
+        contactEmail: map.admin_contact_email || email,
+        issuerId: map.admin_issuer_id || MASTER_ISSUER_ID,
+        serviceAccountEmail: map.admin_service_account || SERVICE_ACCOUNT_EMAIL,
+      });
+    } catch (err) {
+      console.warn('[Admin Profile] GET notice:', err);
+    }
+  }
+  return res.json({
+    email,
+    displayName: runtimeAdminProfile.displayName,
+    organization: runtimeAdminProfile.organization,
+    phone: runtimeAdminProfile.phone,
+    contactEmail: runtimeAdminProfile.contactEmail || email,
+    issuerId: MASTER_ISSUER_ID,
+    serviceAccountEmail: SERVICE_ACCOUNT_EMAIL,
+  });
+});
+
+app.patch('/api/admin/profile', async (req: Request, res: Response) => {
+  const { displayName, organization, phone, contactEmail, issuerId, serviceAccountEmail, currentPassword, newPassword } = req.body || {};
+
+  if (displayName) runtimeAdminProfile.displayName = String(displayName).trim();
+  if (organization !== undefined) runtimeAdminProfile.organization = String(organization).trim();
+  if (phone !== undefined) runtimeAdminProfile.phone = String(phone).trim();
+  if (contactEmail !== undefined) runtimeAdminProfile.contactEmail = String(contactEmail).trim().toLowerCase();
+  if (issuerId && String(issuerId).trim()) MASTER_ISSUER_ID = String(issuerId).trim();
+  if (serviceAccountEmail && String(serviceAccountEmail).trim()) SERVICE_ACCOUNT_EMAIL = String(serviceAccountEmail).trim();
+
+  let generatedPasswordHash: string | undefined;
+  if (newPassword) {
+    const trimmedNew = String(newPassword).trim();
+    if (trimmedNew.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+    const existingHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
+    if (existingHash) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Current password is required to change admin password' });
+      }
+      const match = await bcrypt.compare(String(currentPassword), existingHash);
+      if (!match) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+    }
+    generatedPasswordHash = await bcrypt.hash(trimmedNew, 10);
+    process.env.ADMIN_PASSWORD_HASH = generatedPasswordHash;
+  }
+
+  if (sql) {
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS platform_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `;
+      const entries: [string, string][] = [
+        ['admin_display_name', runtimeAdminProfile.displayName],
+        ['admin_organization', runtimeAdminProfile.organization],
+        ['admin_phone', runtimeAdminProfile.phone],
+        ['admin_contact_email', runtimeAdminProfile.contactEmail],
+        ['admin_issuer_id', MASTER_ISSUER_ID],
+        ['admin_service_account', SERVICE_ACCOUNT_EMAIL],
+      ];
+      for (const [k, v] of entries) {
+        await sql`
+          INSERT INTO platform_settings (key, value, updated_at)
+          VALUES (${k}, ${v}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+        `;
+      }
+    } catch (err) {
+      console.warn('[Admin Profile] DB save notice:', err);
+    }
+  }
+
+  return res.json({
+    success: true,
+    profile: {
+      email: (process.env.SUPER_ADMIN_EMAIL || runtimeAdminProfile.contactEmail || '').trim(),
+      displayName: runtimeAdminProfile.displayName,
+      organization: runtimeAdminProfile.organization,
+      phone: runtimeAdminProfile.phone,
+      contactEmail: runtimeAdminProfile.contactEmail,
+      issuerId: MASTER_ISSUER_ID,
+      serviceAccountEmail: SERVICE_ACCOUNT_EMAIL,
+    },
+    ...(generatedPasswordHash ? { generatedPasswordHash } : {}),
+    message: generatedPasswordHash
+      ? 'Admin profile & runtime password updated. Copy the generated bcrypt hash into Vercel ADMIN_PASSWORD_HASH for persistence across deployments.'
+      : 'Admin profile updated successfully.',
+  });
 });
 
 // DELETE /api/tenants/:slug - Delete or Archive store tenant

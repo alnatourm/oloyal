@@ -17,6 +17,7 @@ interface HeaderProps {
   tenants?: TenantItem[];
   onSelectTenant?: (slug: string) => void;
   onNavigateToAuth?: () => void;
+  onNavigateToProfile?: () => void;
   onNavigateToAdmin?: () => void;
   onLogout?: () => void;
   userRole?: 'super_admin' | 'admin' | 'merchant';
@@ -30,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   tenants = [],
   onSelectTenant,
   onNavigateToAuth,
+  onNavigateToProfile,
   onNavigateToAdmin,
   onLogout,
   userRole = 'merchant',
@@ -181,15 +183,19 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Account Icon (For merchant access) */}
-          {userRole !== 'super_admin' && userRole !== 'admin' && onNavigateToAuth && (
+          {/* Profile Button (Available for both Admin & Merchant users) */}
+          {(onNavigateToProfile || onNavigateToAuth) && (
             <button
               onClick={() => {
                 sounds.click();
-                onNavigateToAuth();
+                if (onNavigateToProfile) {
+                  onNavigateToProfile();
+                } else if (onNavigateToAuth) {
+                  onNavigateToAuth();
+                }
               }}
               className="w-9 h-9 rounded-full bg-[#ff5722] text-white flex items-center justify-center ring-2 ring-white shadow-sm hover:scale-105 active:scale-95 transition-transform shrink-0"
-              title="Account / Sign In"
+              title="My Profile & Account Settings"
             >
               <span className="material-symbols-outlined text-[18px]">person</span>
             </button>

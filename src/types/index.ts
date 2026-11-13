@@ -12,6 +12,7 @@ export type NavigationPath =
   | 'telemetry-hardware' 
   | 'reports' 
   | 'settings'
+  | 'profile'
   | 'privacy'
   | 'terms';
 
