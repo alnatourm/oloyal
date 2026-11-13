@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { sounds } from '../utils/sound';
 
 interface MerchantAuthViewProps {
-  onLoginSuccess: (slug?: string, tenantName?: string, role?: 'admin' | 'merchant') => void;
+  onLoginSuccess: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant') => void;
   onNavigateToCustomerEnroll: () => void;
 }
 
@@ -73,9 +73,9 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
 
       sounds.chime();
 
-      // If backend detected Admin credentials
-      if (data.role === 'admin') {
-        onLoginSuccess(undefined, 'Super Admin Master Issuer', 'admin');
+      // If backend detected Super Admin credentials
+      if (data.role === 'super_admin' || data.role === 'admin') {
+        onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin');
         return;
       }
 

@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { sql, ensureMigration, verifyPassword } from './_db.js';
 
 export default async function handler(req: any, res: any) {
@@ -6,20 +7,44 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  await ensureMigration();
-
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
   const email = (body.email || body.owner_email || body.ownerEmail || body.username || '').trim().toLowerCase();
   const password = body.password || '';
-  const role = body.role || '';
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
+  // 1. FIRST check Super Admin credentials via environment variables (do NOT query tenants for admin)
+  const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+  const adminPasswordHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
+
+  if (superAdminEmail && email === superAdminEmail) {
+    if (!adminPasswordHash) {
+      return res.status(500).json({ error: 'ADMIN_PASSWORD_HASH is not configured' });
+    }
+    const isAdminValid = await bcrypt.compare(password, adminPasswordHash);
+    if (!isAdminValid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    return res.status(200).json({
+      success: true,
+      role: 'super_admin',
+      user: {
+        name: 'Super Admin Master Issuer',
+        email: superAdminEmail,
+        role: 'super_admin',
+      },
+      token: `session_super_admin_${Date.now()}`,
+      message: 'Super Admin login successful',
+    });
+  }
+
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
   }
+
+  await ensureMigration();
 
   try {
     const rows = await sql`
@@ -52,17 +77,24 @@ export default async function handler(req: any, res: any) {
     }
 
     const tenant = rows[0];
-    const isValid = tenant.is_valid || (tenant.password_hash ? verifyPassword(password, tenant.password_hash) : false);
+    const isBcryptValid = tenant.password_hash?.startsWith('$2')
+      ? await bcrypt.compare(password, tenant.password_hash)
+      : false;
+    const isValid =
+      Boolean(tenant.is_valid) ||
+      isBcryptValid ||
+      (tenant.password_hash ? verifyPassword(password, tenant.password_hash) : false);
 
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    if (tenant.status === 'Pending Approval' || tenant.status === 'pending') {
+    const normalizedStatus = (tenant.status || '').trim().toLowerCase();
+    if (normalizedStatus === 'pending' || normalizedStatus === 'pending approval') {
       return res.status(403).json({
         success: false,
         pending: true,
-        status: 'Pending Approval',
+        status: tenant.status || 'Pending',
         tenant: {
           id: tenant.id,
           slug: tenant.slug,
@@ -70,33 +102,23 @@ export default async function handler(req: any, res: any) {
           ownerName: tenant.owner_name || 'Store Owner',
           ownerEmail: tenant.owner_email,
           plan: tenant.plan || 'growth',
-          status: 'Pending Approval',
+          status: tenant.status || 'Pending',
         },
         error: 'Your store registration has been received and is currently waiting for Super Admin approval for your package.',
       });
     }
 
-    if (tenant.status === 'Suspended') {
+    if (normalizedStatus === 'suspended' || normalizedStatus === 'rejected') {
       return res.status(403).json({
         success: false,
-        status: 'Suspended',
-        error: 'This merchant account has been suspended by the platform administrator.',
+        status: tenant.status,
+        error: 'This merchant account is not active. Please contact the platform administrator.',
       });
     }
 
-    const userEmail = (tenant.owner_email || '').toLowerCase();
-    const assignedRole = (
-      userEmail === 'alnatour.m@gmail.com' ||
-      userEmail === 'admin@passloyal.com' ||
-      userEmail === 'admin@oloyal.com' ||
-      tenant.slug === 'super-admin' ||
-      tenant.plan === 'scale' ||
-      tenant.plan === 'admin'
-    ) ? 'admin' : 'merchant';
-
     return res.status(200).json({
       success: true,
-      role: assignedRole,
+      role: 'merchant',
       tenant: {
         id: tenant.id,
         slug: tenant.slug,
@@ -113,7 +135,7 @@ export default async function handler(req: any, res: any) {
       user: {
         name: tenant.owner_name || tenant.name,
         email: tenant.owner_email,
-        role: assignedRole,
+        role: 'merchant',
       },
       token: `tok_${tenant.id}_${Date.now()}`,
       message: 'Login successful',

@@ -5,7 +5,7 @@ interface LandingPageViewProps {
   onNavigateToDashboard?: () => void;
   onNavigateToEnroll?: () => void;
   onOpenLoginModal?: () => void;
-  onLoginSuccess?: (slug?: string, tenantName?: string, role?: 'admin' | 'merchant') => void;
+  onLoginSuccess?: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant') => void;
 }
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({
@@ -131,9 +131,9 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       sounds.chime();
       setIsAuthModalOpen(false);
 
-      if (data.role === 'admin') {
+      if (data.role === 'super_admin' || data.role === 'admin') {
         if (onLoginSuccess) {
-          onLoginSuccess(undefined, 'Super Admin Master Issuer', 'admin');
+          onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin');
         } else if (onNavigateToDashboard) {
           onNavigateToDashboard();
         }

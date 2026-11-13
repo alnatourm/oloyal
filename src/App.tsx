@@ -17,11 +17,15 @@ import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
 
 export default function App() {
-  const [currentPath, setCurrentPath] = useState<NavigationPath>(() => {
-    return localStorage.getItem('passloyal_role') ? 'dashboard' : 'landing';
+  const [userRole, setUserRole] = useState<'super_admin' | 'admin' | 'merchant'>(() => {
+    return (localStorage.getItem('passloyal_role') as 'super_admin' | 'admin' | 'merchant') || 'merchant';
   });
-  const [userRole, setUserRole] = useState<'admin' | 'merchant'>(() => {
-    return (localStorage.getItem('passloyal_role') as 'admin' | 'merchant') || 'merchant';
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
+  const [currentPath, setCurrentPath] = useState<NavigationPath>(() => {
+    const savedRole = localStorage.getItem('passloyal_role');
+    if (savedRole === 'super_admin' || savedRole === 'admin') return 'super-admin';
+    if (savedRole === 'merchant') return 'dashboard';
+    return 'landing';
   });
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -36,10 +40,10 @@ export default function App() {
 
   // Guard /super-admin: Non-admins CANNOT see or access the admin page
   useEffect(() => {
-    if (currentPath === 'super-admin' && userRole !== 'admin') {
+    if (currentPath === 'super-admin' && !isSuperAdmin) {
       setCurrentPath('dashboard');
     }
-  }, [currentPath, userRole]);
+  }, [currentPath, isSuperAdmin]);
 
   const fetchTenants = () => {
     fetch('/api/tenants')
@@ -60,7 +64,7 @@ export default function App() {
   }, []);
 
   const handleNavigate = (path: NavigationPath) => {
-    if (path === 'super-admin' && userRole !== 'admin') {
+    if (path === 'super-admin' && !isSuperAdmin) {
       setToastMessage('Access restricted to Super Admin only.');
       setTimeout(() => setToastMessage(null), 3000);
       return;
@@ -93,8 +97,8 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleLoginSuccess = (slug?: string, tenantName?: string, role?: 'admin' | 'merchant') => {
-    const assignedRole = role || (slug ? 'merchant' : 'admin');
+  const handleLoginSuccess = (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant') => {
+    const assignedRole = role || (slug ? 'merchant' : 'super_admin');
     setUserRole(assignedRole);
     localStorage.setItem('passloyal_role', assignedRole);
     if (slug) {
@@ -102,7 +106,7 @@ export default function App() {
       localStorage.setItem('passloyal_tenant_slug', slug);
     }
     fetchTenants();
-    if (assignedRole === 'admin') {
+    if (assignedRole === 'super_admin' || assignedRole === 'admin') {
       setToastMessage('Authenticated as Super Admin Master Issuer');
       setCurrentPath('super-admin');
     } else {
@@ -182,24 +186,7 @@ export default function App() {
 
         {currentPath === 'merchant-auth' && (
           <MerchantAuthView
-            onLoginSuccess={(slug, tenantName, role) => {
-              const assignedRole = role || (slug ? 'merchant' : 'admin');
-              setUserRole(assignedRole);
-              localStorage.setItem('passloyal_role', assignedRole);
-              if (slug) {
-                setActiveTenantSlug(slug);
-                localStorage.setItem('passloyal_tenant_slug', slug);
-              }
-              fetchTenants();
-              if (assignedRole === 'admin') {
-                setToastMessage('Authenticated as Super Admin Master Issuer');
-                setCurrentPath('super-admin');
-              } else {
-                setToastMessage(`Welcome! Authenticated as ${tenantName || 'Store Merchant'}`);
-                setCurrentPath('dashboard');
-              }
-              setTimeout(() => setToastMessage(null), 3500);
-            }}
+            onLoginSuccess={handleLoginSuccess}
             onNavigateToCustomerEnroll={() => {
               setCurrentPath('customer-join');
             }}
@@ -208,7 +195,7 @@ export default function App() {
 
         {currentPath === 'billing' && <SaaSBillingView />}
 
-        {currentPath === 'super-admin' && userRole === 'admin' && (
+        {currentPath === 'super-admin' && isSuperAdmin && (
           <SuperAdminView
             onSelectTenantDashboard={(slug) => {
               setActiveTenantSlug(slug);

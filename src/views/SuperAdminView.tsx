@@ -15,7 +15,7 @@ export interface TenantStore {
   plan: 'starter' | 'growth' | 'scale';
   passLimit: number;
   passCount: number;
-  status: 'Active' | 'Pending Approval' | 'Suspended' | 'Maintenance';
+  status: 'Active' | 'Pending' | 'Pending Approval' | 'Suspended' | 'Rejected' | 'Maintenance';
   createdAt: string;
   apiKey?: string;
   baseEarnRate?: number;
@@ -27,11 +27,12 @@ interface SuperAdminViewProps {
 
 export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDashboard }) => {
   const [tenants, setTenants] = useState<TenantStore[]>([]);
+  const [pendingQueue, setPendingQueue] = useState<TenantStore[]>([]);
 
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState<'all' | 'starter' | 'growth' | 'scale'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Pending Approval' | 'Active' | 'Suspended' | 'Maintenance'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Pending Approval' | 'Active' | 'Suspended' | 'Rejected' | 'Maintenance'>('all');
 
   // Modals state
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
@@ -69,37 +70,57 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const mapTenantRow = (t: any): TenantStore => {
+    const rawStatus = (t.status || '').trim().toLowerCase();
+    const normalizedStatus: TenantStore['status'] =
+      rawStatus === 'pending' || rawStatus === 'pending approval'
+        ? 'Pending Approval'
+        : rawStatus === 'suspended'
+        ? 'Suspended'
+        : rawStatus === 'rejected'
+        ? 'Rejected'
+        : rawStatus === 'maintenance'
+        ? 'Maintenance'
+        : 'Active';
+
+    return {
+      id: t.id,
+      slug: t.slug,
+      name: t.name,
+      legalEntity: t.legalEntity || `${t.name} LLC`,
+      ownerName: t.ownerName || 'Store Manager',
+      ownerEmail: t.ownerEmail || `admin@${t.slug}.com`,
+      brandColor: t.brandColor || t.color || '#ff5722',
+      logoUrl: t.logoUrl || t.logo || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
+      archetype: t.archetype || 'loyalty',
+      classId: t.classId || t.class_id,
+      plan: t.plan || 'growth',
+      passLimit: Number(t.passLimit || t.pass_limit || (t.plan === 'scale' ? 50000 : t.plan === 'starter' ? 500 : 5000)),
+      passCount: Number(t.passCount || t.pass_count || 0),
+      status: normalizedStatus,
+      createdAt: t.createdAt || new Date().toISOString(),
+      apiKey: `pk_live_${(t.slug || 'store').replace(/-/g, '_')}_${Math.floor(100000 + Math.random() * 900000)}`,
+      baseEarnRate: 10,
+    };
+  };
+
   const fetchTenants = async () => {
     try {
-      const res = await fetch('/api/tenants');
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        const mapped: TenantStore[] = data.map((t: any) => ({
-          id: t.id,
-          slug: t.slug,
-          name: t.name,
-          legalEntity: t.legalEntity || `${t.name} LLC`,
-          ownerName: t.ownerName || 'Store Manager',
-          ownerEmail: t.ownerEmail || `admin@${t.slug}.com`,
-          brandColor: t.brandColor || t.color || '#ff5722',
-          logoUrl: t.logoUrl || t.logo || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
-          archetype: t.archetype || 'loyalty',
-          classId: t.classId || t.class_id,
-          plan: t.plan || 'growth',
-          passLimit: Number(t.passLimit || t.pass_limit || (t.plan === 'scale' ? 50000 : t.plan === 'starter' ? 500 : 5000)),
-          passCount: Number(t.passCount || t.pass_count || 0),
-          status: t.status === 'Pending Approval' || t.status === 'pending'
-            ? 'Pending Approval'
-            : t.status === 'Suspended' || t.status === 'suspended'
-            ? 'Suspended'
-            : t.status === 'Maintenance'
-            ? 'Maintenance'
-            : 'Active',
-          createdAt: t.createdAt || new Date().toISOString(),
-          apiKey: `pk_live_${t.slug.replace(/-/g, '_')}_${Math.floor(100000 + Math.random() * 900000)}`,
-          baseEarnRate: 10,
-        }));
+      const [allRes, pendingRes] = await Promise.all([
+        fetch('/api/tenants'),
+        fetch('/api/tenants?status=Pending'),
+      ]);
+      const allData = await allRes.json();
+      const pendingData = await pendingRes.json().catch(() => []);
+
+      if (Array.isArray(allData)) {
+        const mapped = allData.map(mapTenantRow);
         setTenants(mapped);
+        if (Array.isArray(pendingData) && pendingRes.ok) {
+          setPendingQueue(pendingData.map(mapTenantRow));
+        } else {
+          setPendingQueue(mapped.filter((t) => t.status === 'Pending Approval' || t.status === 'Pending'));
+        }
       }
     } catch (err) {
       console.error('Error fetching tenants from DB:', err);
@@ -116,7 +137,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     setTimeout(() => setNotice(null), 3500);
   };
 
-  // Approve a pending merchant & activate live issuing
+  // Approve a pending merchant & activate live issuing (UPDATE tenants SET status='Active')
   const handleApproveTenant = async (tenant: TenantStore) => {
     sounds.chime();
     try {
@@ -127,7 +148,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
       });
       if (res.ok) {
         await fetchTenants();
-        triggerNotice(`Approved & Activated Merchant "${tenant.name}" for ${tenant.plan.toUpperCase()} Package!`);
+        triggerNotice(`Approved & Activated Merchant "${tenant.name}" (status = Active)!`);
       } else {
         triggerNotice('Failed to update tenant status in database');
       }
@@ -136,18 +157,18 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     }
   };
 
-  // Reject / Suspend a merchant application
+  // Reject a merchant application (UPDATE tenants SET status='Rejected')
   const handleRejectTenant = async (tenant: TenantStore) => {
     sounds.click(400, 0.05);
     try {
       const res = await fetch(`/api/tenants/${tenant.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'Suspended' }),
+        body: JSON.stringify({ status: 'Rejected' }),
       });
       if (res.ok) {
         await fetchTenants();
-        triggerNotice(`Application for "${tenant.name}" has been Rejected/Suspended.`);
+        triggerNotice(`Application for "${tenant.name}" has been Rejected.`);
       }
     } catch (err) {
       triggerNotice('Error connecting to database');
@@ -348,9 +369,11 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   // Calculate live stats
   const totalPassesMinted = tenants.reduce((acc, t) => acc + t.passCount, 0);
   const activeCount = tenants.filter((t) => t.status === 'Active').length;
-  const pendingTenants = tenants.filter((t) => t.status === 'Pending Approval');
+  const pendingTenants = pendingQueue.length > 0
+    ? pendingQueue
+    : tenants.filter((t) => t.status === 'Pending Approval' || t.status === 'Pending');
   const totalMRR = tenants.reduce((acc, t) => {
-    if (t.status === 'Suspended') return acc;
+    if (t.status === 'Suspended' || t.status === 'Rejected') return acc;
     const costs = { starter: 49, growth: 149, scale: 399 };
     return acc + (costs[t.plan] || 149);
   }, 0);
@@ -405,48 +428,109 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
         </div>
       </div>
 
-      {/* Pending Approval Alert Bar */}
-      {pendingTenants.length > 0 && (
-        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-500/40 tactile-card flex flex-wrap items-center justify-between gap-4 animate-in fade-in duration-300">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold animate-pulse shadow-md shrink-0">
-              <span className="material-symbols-outlined text-[22px]">hourglass_top</span>
+      {/* Dedicated Pending Approvals Queue (WHERE status IN ('Pending', 'Pending Approval')) */}
+      <div className="p-6 rounded-xl bg-surface-container-low tactile-card border border-amber-500/30 flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md shrink-0 ${
+              pendingTenants.length > 0 ? 'bg-amber-500 text-white animate-pulse' : 'bg-emerald-600 text-white'
+            }`}>
+              <span className="material-symbols-outlined text-[22px]">
+                {pendingTenants.length > 0 ? 'hourglass_top' : 'task_alt'}
+              </span>
             </div>
             <div>
-              <h4 className="font-bold text-on-surface text-[15px] flex items-center gap-2">
-                <span>{pendingTenants.length} New Merchant Registration{pendingTenants.length > 1 ? 's' : ''} Awaiting Package Approval</span>
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-[11px] font-bold">
-                  Action Required
+              <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface flex items-center gap-2">
+                <span>Pending Merchant Approvals</span>
+                <span className={`px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold ${
+                  pendingTenants.length > 0
+                    ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                    : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                }`}>
+                  {pendingTenants.length} Pending
                 </span>
-              </h4>
-              <p className="text-[12px] text-on-surface-variant">
-                {pendingTenants.map((t) => `${t.name} applied for ${t.plan.toUpperCase()} Package ($${t.plan === 'scale' ? 399 : t.plan === 'starter' ? 49 : 149}/mo)`).join(' • ')}
+              </h3>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">
+                Stores awaiting verification before activating Google Wallet pass issuing (status = Active)
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                sounds.click();
-                setStatusFilter('Pending Approval');
-              }}
-              className="px-4 py-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm font-bold tactile-btn flex items-center gap-1.5"
-            >
-              <span>Filter Pending ({pendingTenants.length})</span>
-              <span className="material-symbols-outlined text-[16px]">filter_alt</span>
-            </button>
-            {pendingTenants.length === 1 && (
-              <button
-                onClick={() => handleApproveTenant(pendingTenants[0])}
-                className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-label-sm text-label-sm font-bold tactile-glow flex items-center gap-1.5 shadow-md"
-              >
-                <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                <span>Approve {pendingTenants[0].name}</span>
-              </button>
-            )}
-          </div>
+
+          <button
+            onClick={() => {
+              sounds.click();
+              fetchTenants();
+            }}
+            className="px-4 py-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm font-bold tactile-btn flex items-center gap-1.5"
+          >
+            <span className="material-symbols-outlined text-[16px]">refresh</span>
+            <span>Refresh Queue</span>
+          </button>
         </div>
-      )}
+
+        {pendingTenants.length === 0 ? (
+          <div className="p-4 rounded-xl bg-surface-container tactile-deboss text-center text-sm text-on-surface-variant">
+            No pending merchant registrations at the moment.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left font-body-sm text-body-sm">
+              <thead>
+                <tr className="border-b border-surface-container-highest text-outline uppercase font-label-sm text-label-sm">
+                  <th className="py-2.5 px-4">Store Name</th>
+                  <th className="py-2.5 px-4">Owner / Email</th>
+                  <th className="py-2.5 px-4">Requested Package</th>
+                  <th className="py-2.5 px-4">Status</th>
+                  <th className="py-2.5 px-4 text-right">Approval Decision</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-container-highest/60">
+                {pendingTenants.map((pt) => (
+                  <tr key={pt.id} className="hover:bg-surface-container/50 transition-colors">
+                    <td className="py-3 px-4 font-bold text-on-surface">
+                      <div>{pt.name}</div>
+                      <div className="font-mono text-[11px] text-outline">/{pt.slug}</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="font-semibold text-on-surface">{pt.ownerName}</div>
+                      <div className="text-[11px] text-on-surface-variant">{pt.ownerEmail}</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-label-sm text-label-sm font-bold uppercase">
+                        {pt.plan} (${pt.plan === 'scale' ? 399 : pt.plan === 'starter' ? 49 : 149}/mo)
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-label-sm text-label-sm font-bold ring-1 ring-amber-500/40">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                        Pending
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleApproveTenant(pt)}
+                          className="px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-label-sm text-label-sm font-bold shadow-md flex items-center gap-1 active:scale-95 transition-all"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                          <span>Approve</span>
+                        </button>
+                        <button
+                          onClick={() => handleRejectTenant(pt)}
+                          className="px-3.5 py-1.5 rounded-full bg-red-600/10 hover:bg-red-600 hover:text-white text-red-700 font-label-sm text-label-sm font-bold transition-all flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">cancel</span>
+                          <span>Reject</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Platform Level Metric Pods */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -554,8 +638,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
           {/* Status Filter */}
           <div className="flex items-center gap-1.5 bg-surface-container p-1 rounded-full tactile-deboss">
             <span className="text-[11px] uppercase font-bold text-outline px-2">Status:</span>
-            {(['all', 'Pending Approval', 'Active', 'Suspended', 'Maintenance'] as const).map((st) => {
-              const pendingCount = tenants.filter((t) => t.status === 'Pending Approval').length;
+            {(['all', 'Pending Approval', 'Active', 'Suspended', 'Rejected', 'Maintenance'] as const).map((st) => {
+              const pendingCount = tenants.filter((t) => t.status === 'Pending Approval' || t.status === 'Pending').length;
               const label =
                 st === 'all'
                   ? 'All'
@@ -704,9 +788,9 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-label-sm text-label-sm font-bold ${
                             t.status === 'Active'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : t.status === 'Pending Approval'
+                              : t.status === 'Pending Approval' || t.status === 'Pending'
                               ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-1 ring-amber-500/40'
-                              : t.status === 'Suspended'
+                              : t.status === 'Suspended' || t.status === 'Rejected'
                               ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
                               : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
                           }`}
@@ -715,9 +799,9 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                             className={`w-1.5 h-1.5 rounded-full ${
                               t.status === 'Active'
                                 ? 'bg-emerald-500 animate-pulse'
-                                : t.status === 'Pending Approval'
+                                : t.status === 'Pending Approval' || t.status === 'Pending'
                                 ? 'bg-amber-500 animate-ping'
-                                : t.status === 'Suspended'
+                                : t.status === 'Suspended' || t.status === 'Rejected'
                                 ? 'bg-red-500'
                                 : 'bg-blue-500'
                             }`}

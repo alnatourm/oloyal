@@ -68,12 +68,28 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'PATCH' || req.method === 'PUT') {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail } = body;
+    const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail, password } = body;
     const computedLimit = passLimit || pass_limit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null);
+    const rawPwd = password ? String(password).trim() : '';
 
     if (sql) {
       try {
-        const rows = await sql`
+        const rows = rawPwd ? await sql`
+          UPDATE tenants
+          SET 
+            name = COALESCE(${name || null}, name),
+            logo = COALESCE(${logoUrl || null}, logo),
+            color = COALESCE(${brandColor || null}, color),
+            archetype = COALESCE(${archetype || null}, archetype),
+            status = COALESCE(${status || null}, status),
+            plan = COALESCE(${plan || null}, plan),
+            pass_limit = COALESCE(${computedLimit || null}, pass_limit),
+            owner_name = COALESCE(${ownerName || null}, owner_name),
+            owner_email = COALESCE(${ownerEmail || null}, owner_email),
+            password_hash = crypt(${rawPwd}, gen_salt('bf'))
+          WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
+        ` : await sql`
           UPDATE tenants
           SET 
             name = COALESCE(${name || null}, name),
@@ -120,6 +136,31 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
-  res.setHeader('Allow', ['GET', 'PATCH', 'PUT']);
+  if (req.method === 'DELETE') {
+    if (!sql) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    try {
+      await sql`
+        DELETE FROM members WHERE tenant_id IN (
+          SELECT id FROM tenants WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+        );
+      `;
+      const deletedRows = await sql`
+        DELETE FROM tenants 
+        WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+        RETURNING id, slug, name;
+      `;
+      if (deletedRows.length > 0) {
+        return res.status(200).json({ success: true, deleted: deletedRows[0], message: 'Merchant tenant deleted from Neon Postgres' });
+      }
+      return res.status(404).json({ error: 'Tenant not found' });
+    } catch (err: any) {
+      console.error('[Neon Postgres API] DELETE /api/tenants/[slug] error:', err);
+      return res.status(500).json({ error: `Failed to delete merchant: ${err?.message || 'Database error'}` });
+    }
+  }
+
+  res.setHeader('Allow', ['GET', 'PATCH', 'PUT', 'DELETE']);
   return res.status(405).end(`Method ${req.method} Not Allowed`);
 }

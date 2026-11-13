@@ -6,7 +6,7 @@ interface NavigationProps {
   currentPath: NavigationPath;
   onNavigate: (path: NavigationPath) => void;
   openScannerModal: () => void;
-  userRole?: 'admin' | 'merchant';
+  userRole?: 'super_admin' | 'admin' | 'merchant';
   onLogout?: () => void;
 }
 
@@ -34,7 +34,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   ];
 
   // Strictly hide super-admin when user is a merchant
-  const navItems = allNavItems.filter((item) => !item.adminOnly || userRole === 'admin');
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
+  const navItems = allNavItems.filter((item) => !item.adminOnly || isSuperAdmin);
 
   return (
     <aside className="fixed left-4 lg:left-6 top-6 bottom-6 w-20 z-50 flex flex-col items-center justify-between py-6 bg-surface-container-low rounded-xl tactile-convex transition-all">

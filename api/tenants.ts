@@ -5,29 +5,54 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'GET') {
     if (sql) {
+      const statusParam = typeof req.query?.status === 'string' ? req.query.status.trim().toLowerCase() : '';
       try {
-        const rows = await sql`
-          SELECT 
-            t.id, 
-            t.slug, 
-            t.name, 
-            t.logo, 
-            t.color, 
-            t.archetype, 
-            t.class_id, 
-            t.issuer_id,
-            t.owner_name,
-            t.owner_email,
-            t.status,
-            t.plan,
-            t.pass_limit,
-            t.created_at,
-            COUNT(m.id)::int as pass_count
-          FROM tenants t
-          LEFT JOIN members m ON m.tenant_id = t.id
-          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
-          ORDER BY t.id;
-        `;
+        const rows = statusParam === 'pending' || statusParam === 'pending approval'
+          ? await sql`
+              SELECT 
+                t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+                t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+                COUNT(m.id)::int as pass_count
+              FROM tenants t
+              LEFT JOIN members m ON m.tenant_id = t.id
+              WHERE LOWER(COALESCE(t.status, '')) IN ('pending', 'pending approval')
+              GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+              ORDER BY t.created_at DESC NULLS LAST, t.id DESC;
+            `
+          : statusParam
+          ? await sql`
+              SELECT 
+                t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+                t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+                COUNT(m.id)::int as pass_count
+              FROM tenants t
+              LEFT JOIN members m ON m.tenant_id = t.id
+              WHERE LOWER(COALESCE(t.status, '')) = ${statusParam}
+              GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+              ORDER BY t.id;
+            `
+          : await sql`
+              SELECT 
+                t.id, 
+                t.slug, 
+                t.name, 
+                t.logo, 
+                t.color, 
+                t.archetype, 
+                t.class_id, 
+                t.issuer_id,
+                t.owner_name,
+                t.owner_email,
+                t.status,
+                t.plan,
+                t.pass_limit,
+                t.created_at,
+                COUNT(m.id)::int as pass_count
+              FROM tenants t
+              LEFT JOIN members m ON m.tenant_id = t.id
+              GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+              ORDER BY t.id;
+            `;
 
         const mapped = rows.map((r: any) => ({
           id: r.id,
@@ -189,7 +214,7 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'PATCH' || req.method === 'PUT') {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const { slug, id, status, plan, passLimit, name, brandColor, logoUrl, archetype } = body;
+    const { slug, id, status, plan, passLimit, name, brandColor, logoUrl, archetype, ownerName, ownerEmail, password } = body;
     const target = slug || id || req.query?.slug || req.query?.id;
 
     if (!target) {
@@ -197,10 +222,11 @@ export default async function handler(req: any, res: any) {
     }
 
     const computedLimit = passLimit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null);
+    const rawPwd = password ? String(password).trim() : '';
 
     if (sql) {
       try {
-        const rows = await sql`
+        const rows = rawPwd ? await sql`
           UPDATE tenants
           SET 
             status = COALESCE(${status || null}, status),
@@ -209,7 +235,24 @@ export default async function handler(req: any, res: any) {
             name = COALESCE(${name || null}, name),
             color = COALESCE(${brandColor || null}, color),
             logo = COALESCE(${logoUrl || null}, logo),
-            archetype = COALESCE(${archetype || null}, archetype)
+            archetype = COALESCE(${archetype || null}, archetype),
+            owner_name = COALESCE(${ownerName || null}, owner_name),
+            owner_email = COALESCE(${ownerEmail || null}, owner_email),
+            password_hash = crypt(${rawPwd}, gen_salt('bf'))
+          WHERE slug = ${target} OR id = ${target}
+          RETURNING id, slug, name, logo, color, archetype, class_id, status, plan, pass_limit;
+        ` : await sql`
+          UPDATE tenants
+          SET 
+            status = COALESCE(${status || null}, status),
+            plan = COALESCE(${plan || null}, plan),
+            pass_limit = COALESCE(${computedLimit || null}, pass_limit),
+            name = COALESCE(${name || null}, name),
+            color = COALESCE(${brandColor || null}, color),
+            logo = COALESCE(${logoUrl || null}, logo),
+            archetype = COALESCE(${archetype || null}, archetype),
+            owner_name = COALESCE(${ownerName || null}, owner_name),
+            owner_email = COALESCE(${ownerEmail || null}, owner_email)
           WHERE slug = ${target} OR id = ${target}
           RETURNING id, slug, name, logo, color, archetype, class_id, status, plan, pass_limit;
         `;

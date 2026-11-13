@@ -19,7 +19,7 @@ interface HeaderProps {
   onNavigateToAuth?: () => void;
   onNavigateToAdmin?: () => void;
   onLogout?: () => void;
-  userRole?: 'admin' | 'merchant';
+  userRole?: 'super_admin' | 'admin' | 'merchant';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -167,7 +167,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {/* Admin Console Badge Button (Visible only to authenticated Admin) */}
-          {userRole === 'admin' && onNavigateToAdmin && (
+          {(userRole === 'super_admin' || userRole === 'admin') && onNavigateToAdmin && (
             <button
               onClick={() => {
                 sounds.click();
@@ -182,7 +182,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {/* Account Icon (For merchant access) */}
-          {userRole !== 'admin' && onNavigateToAuth && (
+          {userRole !== 'super_admin' && userRole !== 'admin' && onNavigateToAuth && (
             <button
               onClick={() => {
                 sounds.click();

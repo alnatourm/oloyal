@@ -88,34 +88,6 @@ export async function ensureMigration() {
 
         try {
           await sql`
-            INSERT INTO tenants (
-              id, slug, name, logo, color, archetype, class_id, issuer_id, owner_name, owner_email, password_hash, status, plan, pass_limit, created_at
-            )
-            VALUES (
-              't-admin-master',
-              'super-admin',
-              'Super Admin Master Issuer',
-              'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
-              '#ff5722',
-              'loyalty',
-              '${MASTER_ISSUER_ID}.tenant_super_admin_class',
-              '${MASTER_ISSUER_ID}',
-              'Super Admin Master Issuer',
-              'alnatour.m@gmail.com',
-              crypt('admin123', gen_salt('bf')),
-              'Active',
-              'scale',
-              50000,
-              NOW()
-            )
-            ON CONFLICT (owner_email) DO NOTHING;
-          `;
-        } catch (adminErr) {
-          console.warn('[Migration] Super admin seed notice:', adminErr?.message || adminErr);
-        }
-
-        try {
-          await sql`
             UPDATE tenants 
             SET status = 'Active',
                 password_hash = COALESCE(password_hash, crypt('admin123', gen_salt('bf')))
