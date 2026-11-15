@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
 import { sounds } from '../utils/sound';
+import { AUTH_TOKEN_KEY, AUTH_TENANT_ID_KEY } from '../utils/auth';
 
 interface MerchantAuthViewProps {
-  onLoginSuccess: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant', email?: string) => void;
+  onLoginSuccess: (
+    slug?: string,
+    tenantName?: string,
+    role?: 'super_admin' | 'admin' | 'merchant',
+    email?: string,
+    token?: string,
+    tenantId?: string
+  ) => void;
   onNavigateToCustomerEnroll: () => void;
 }
 
@@ -73,16 +81,39 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
 
       sounds.chime();
 
+      if (data.token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      }
+      if (data.tenant?.id) {
+        localStorage.setItem(AUTH_TENANT_ID_KEY, data.tenant.id);
+      } else {
+        localStorage.removeItem(AUTH_TENANT_ID_KEY);
+      }
+
       // If backend detected Super Admin credentials
       if (data.role === 'super_admin' || data.role === 'admin') {
-        onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin', data.user?.email || identifier.trim().toLowerCase());
+        onLoginSuccess(
+          undefined,
+          'Super Admin Master Issuer',
+          'super_admin',
+          data.user?.email || identifier.trim().toLowerCase(),
+          data.token,
+          undefined
+        );
         return;
       }
 
       // Otherwise merchant store login
-      const targetSlug = data.tenant?.slug || 'banlis';
+      const targetSlug = data.tenant?.slug || '';
       const name = data.tenant?.name || 'Your Store';
-      onLoginSuccess(targetSlug, name, 'merchant', data.tenant?.ownerEmail || data.user?.email || identifier.trim().toLowerCase());
+      onLoginSuccess(
+        targetSlug,
+        name,
+        'merchant',
+        data.tenant?.ownerEmail || data.user?.email || identifier.trim().toLowerCase(),
+        data.token,
+        data.tenant?.id
+      );
     } catch (err: any) {
       setLoginError(err.message || 'Login failed. Please verify credentials.');
     } finally {

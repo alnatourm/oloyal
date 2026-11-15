@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { sounds } from '../utils/sound';
+import { AUTH_TOKEN_KEY, AUTH_TENANT_ID_KEY, getAuthToken } from '../utils/auth';
 
 interface LandingPageViewProps {
   onNavigateToDashboard?: () => void;
   onNavigateToEnroll?: () => void;
   onOpenLoginModal?: () => void;
-  onLoginSuccess?: (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant', email?: string) => void;
+  onLoginSuccess?: (
+    slug?: string,
+    tenantName?: string,
+    role?: 'super_admin' | 'admin' | 'merchant',
+    email?: string,
+    token?: string,
+    tenantId?: string
+  ) => void;
 }
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({
@@ -131,19 +139,42 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       sounds.chime();
       setIsAuthModalOpen(false);
 
+      if (data.token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      }
+      if (data.tenant?.id) {
+        localStorage.setItem(AUTH_TENANT_ID_KEY, data.tenant.id);
+      } else {
+        localStorage.removeItem(AUTH_TENANT_ID_KEY);
+      }
+
       if (data.role === 'super_admin' || data.role === 'admin') {
         if (onLoginSuccess) {
-          onLoginSuccess(undefined, 'Super Admin Master Issuer', 'super_admin', data.user?.email || identifier.trim().toLowerCase());
+          onLoginSuccess(
+            undefined,
+            'Super Admin Master Issuer',
+            'super_admin',
+            data.user?.email || identifier.trim().toLowerCase(),
+            data.token,
+            undefined
+          );
         } else if (onNavigateToDashboard) {
           onNavigateToDashboard();
         }
         return;
       }
 
-      const targetSlug = data.tenant?.slug || 'banlis';
+      const targetSlug = data.tenant?.slug || '';
       const name = data.tenant?.name || 'Your Store';
       if (onLoginSuccess) {
-        onLoginSuccess(targetSlug, name, 'merchant', data.tenant?.ownerEmail || data.user?.email || identifier.trim().toLowerCase());
+        onLoginSuccess(
+          targetSlug,
+          name,
+          'merchant',
+          data.tenant?.ownerEmail || data.user?.email || identifier.trim().toLowerCase(),
+          data.token,
+          data.tenant?.id
+        );
       } else if (onNavigateToDashboard) {
         onNavigateToDashboard();
       }
@@ -209,6 +240,10 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
 
   const handleExploreDemo = () => {
     sounds.click();
+    if (!getAuthToken()) {
+      openAuthModal('signin');
+      return;
+    }
     if (onNavigateToDashboard) {
       onNavigateToDashboard();
     }

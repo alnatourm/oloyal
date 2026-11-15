@@ -1,16 +1,86 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LoyaltyPerk, OrderItem } from '../types';
 import { sounds } from '../utils/sound';
+import { authFetch, getAuthToken } from '../utils/auth';
+
+interface CashierMember {
+  id: string;
+  uid: string;
+  name: string;
+  tier: string;
+  points: number;
+}
 
 interface CashierViewProps {
+  activeSlug?: string;
+  userRole?: 'super_admin' | 'admin' | 'merchant';
   openScannerModal: () => void;
 }
 
-export const CashierView: React.FC<CashierViewProps> = ({ openScannerModal }) => {
+export const CashierView: React.FC<CashierViewProps> = ({
+  activeSlug = '',
+  userRole = 'merchant',
+  openScannerModal,
+}) => {
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const [currentTotal, setCurrentTotal] = useState<number>(55.0);
   const [inputBuffer, setInputBuffer] = useState<string>('');
   const [showToast, setShowToast] = useState<boolean>(false);
+  const [toastSummary, setToastSummary] = useState<string>('Order synced to ledger');
   const [tenderMethod, setTenderMethod] = useState<'nfc' | 'emv' | 'cash'>('nfc');
+  const [storeName, setStoreName] = useState<string>(activeSlug || 'Store Terminal');
+  const [members, setMembers] = useState<CashierMember[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMembers([]);
+    setSelectedIdx(0);
+    setStoreName(activeSlug || 'Store Terminal');
+
+    if (!getAuthToken()) return;
+
+    const membersUrl =
+      isSuperAdmin && activeSlug
+        ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
+        : '/api/members';
+
+    authFetch(membersUrl)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (cancelled || !Array.isArray(data)) return;
+        const mapped: CashierMember[] = data.map((m: any) => {
+          const pts = Number(m.points || 0);
+          return {
+            id: m.id,
+            uid: `#${m.member_id || m.id}`,
+            name: m.customer_name || m.name || 'Member',
+            tier: pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER',
+            points: pts,
+          };
+        });
+        setMembers(mapped);
+        if (data[0]?.store_name) setStoreName(data[0].store_name);
+      })
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      });
+
+    if (activeSlug) {
+      authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((t) => {
+          if (!cancelled && t?.name) setStoreName(t.name);
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSlug, userRole, isSuperAdmin]);
+
+  const activeMember = members.length > 0 ? members[selectedIdx % members.length] : null;
 
   // Order items
   const [orderItems] = useState<OrderItem[]>([
@@ -115,8 +185,40 @@ export const CashierView: React.FC<CashierViewProps> = ({ openScannerModal }) =>
     }
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     sounds.chime();
+    if (!activeMember) {
+      setToastSummary(`Tender authorized ($${currentTotal.toFixed(2)}) — no enrolled member selected for ${storeName}`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3800);
+      return;
+    }
+
+    const earnedPts = Math.max(1, Math.round(currentTotal));
+    try {
+      const res = await authFetch(`/api/members/${encodeURIComponent(activeMember.id)}/points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          points: earnedPts,
+          reason: `POS Checkout ($${currentTotal.toFixed(2)})`,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && typeof data.newPoints === 'number') {
+        const nextPts = data.newPoints;
+        const nextTier = nextPts >= 2000 ? 'PLATINUM' : nextPts >= 1000 ? 'GOLD VIP' : 'SILVER';
+        setMembers((prev) =>
+          prev.map((m) => (m.id === activeMember.id ? { ...m, points: nextPts, tier: nextTier } : m))
+        );
+        setToastSummary(`Pass updated for ${activeMember.name} (+${earnedPts} pts • Total ${nextPts.toLocaleString()} pts)`);
+      } else {
+        setToastSummary(data.error || `Completed checkout for ${activeMember.name}`);
+      }
+    } catch {
+      setToastSummary(`Checkout recorded locally for ${activeMember.name}`);
+    }
+
     setShowToast(true);
     setTimeout(() => {
       setShowToast(false);
@@ -137,16 +239,16 @@ export const CashierView: React.FC<CashierViewProps> = ({ openScannerModal }) =>
             </span>
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-headline-sm text-headline-sm text-on-surface">
-                Lane 04 • Express Terminal
+                {storeName} • Express Terminal
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm uppercase tracking-wider font-semibold">
-                Active Session
+                Filtered strictly for {storeName}
               </span>
             </div>
             <p className="font-body-sm text-body-sm text-on-surface-variant">
-              Host: Elena Rostova • Register #814-K
+              Tenant-isolated POS Register • {members.length} enrolled member(s)
             </p>
           </div>
         </div>
@@ -215,33 +317,41 @@ export const CashierView: React.FC<CashierViewProps> = ({ openScannerModal }) =>
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-headline-md text-headline-md text-on-surface tracking-tight">
-                      Marcus Vance
+                      {activeMember ? activeMember.name : 'No Enrolled Member'}
                     </h2>
                     <span className="px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant font-label-sm text-label-sm uppercase font-bold">
-                      Gold VIP
+                      {activeMember ? activeMember.tier : 'IDLE'}
                     </span>
                   </div>
                   <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
-                    UID: #PV-889042 • Pass Sync: 2m ago
+                    {activeMember
+                      ? `UID: ${activeMember.uid} • ${storeName}`
+                      : `No members enrolled for ${storeName} yet`}
                   </p>
                   <div className="flex items-center gap-3 mt-2">
                     <div className="flex items-center gap-1 text-primary-container font-headline-sm text-headline-sm font-bold">
                       <span className="material-symbols-outlined text-[18px]">toll</span>
-                      <span>1,450</span>
+                      <span>{activeMember ? activeMember.points.toLocaleString() : '0'}</span>
                       <span className="font-label-md text-label-md text-on-surface-variant font-normal">
                         pts
                       </span>
                     </div>
                     <span className="text-on-surface-variant/40">•</span>
                     <span className="font-label-md text-label-md text-on-surface-variant">
-                      Tier Reward Active
+                      {activeMember ? 'Tier Reward Active' : '0 enrolled cards'}
                     </span>
                   </div>
                 </div>
               </div>
               <button
-                onClick={() => sounds.click()}
-                className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface-variant hover:text-on-surface"
+                onClick={() => {
+                  sounds.click();
+                  if (members.length > 1) {
+                    setSelectedIdx((prev) => (prev + 1) % members.length);
+                  }
+                }}
+                disabled={members.length <= 1}
+                className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface-variant hover:text-on-surface disabled:opacity-40"
                 title="Switch Member Account"
               >
                 <span className="material-symbols-outlined text-[18px]">switch_account</span>
@@ -708,7 +818,7 @@ export const CashierView: React.FC<CashierViewProps> = ({ openScannerModal }) =>
               Payment &amp; Loyalty Sync Successful
             </p>
             <p className="font-body-sm text-body-sm text-on-surface-variant">
-              Pass updated for Marcus Vance (+55 pts earned)
+              {toastSummary}
             </p>
           </div>
         </div>

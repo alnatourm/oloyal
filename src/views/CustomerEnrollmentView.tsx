@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { sounds } from '../utils/sound';
+import { authFetch, getAuthToken } from '../utils/auth';
 
-export const CustomerEnrollmentView: React.FC = () => {
-  const [customerName, setCustomerName] = useState<string>('Marcus Vance');
-  const [email, setEmail] = useState<string>('marcus.vance@example.com');
-  const [phone, setPhone] = useState<string>('+1 (555) 234-5678');
+interface CustomerEnrollmentViewProps {
+  activeSlug?: string;
+  userRole?: 'super_admin' | 'admin' | 'merchant';
+}
+
+export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
+  activeSlug = '',
+}) => {
+  const [customerName, setCustomerName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [phone, setPhone] = useState<string>('');
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [jwtLink, setJwtLink] = useState<string>('');
@@ -12,19 +20,108 @@ export const CustomerEnrollmentView: React.FC = () => {
   const [copied, setCopied] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
 
-  // Generate a pass only when the API confirms that member was saved in DB & signed Save URL was created.
+  const [storeInfo, setStoreInfo] = useState<{
+    slug: string;
+    name: string;
+    brandColor: string;
+    logoUrl?: string;
+  }>({
+    slug: activeSlug,
+    name: activeSlug || 'Store Loyalty Club',
+    brandColor: '#ff5722',
+  });
+
+  const [enrolledMember, setEnrolledMember] = useState<{
+    uid: string;
+    points: number;
+    tier: string;
+  }>({
+    uid: '#PL-NEW',
+    points: 100,
+    tier: 'SILVER',
+  });
+
+  useEffect(() => {
+    const querySlug =
+      new URLSearchParams(window.location.search).get('store') ||
+      new URLSearchParams(window.location.search).get('slug') ||
+      '';
+    const targetSlug = activeSlug || querySlug;
+    setStoreInfo((prev) => ({
+      ...prev,
+      slug: targetSlug,
+      name: targetSlug || 'Store Loyalty Club',
+    }));
+
+    if (targetSlug && getAuthToken()) {
+      authFetch(`/api/tenants/${encodeURIComponent(targetSlug)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.name) {
+            setStoreInfo({
+              slug: data.slug || targetSlug,
+              name: data.name,
+              brandColor: data.brandColor || '#ff5722',
+              logoUrl: data.logoUrl,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [activeSlug]);
+
   const generatePass = async (name: string, userEmail: string, userPhone: string) => {
     setIsLoading(true);
     setErrorMessage('');
+    const targetSlug = storeInfo.slug || activeSlug;
+    const hasToken = Boolean(getAuthToken());
+
+    if (!hasToken && !targetSlug) {
+      const msg = 'No active store selected. Sign in or open a valid store join link.';
+      setErrorMessage(msg);
+      setIsLoading(false);
+      throw new Error(msg);
+    }
+
     try {
-      const res = await fetch('/api/tenants/banlis-bistro/enroll', {
+      const endpoint = hasToken
+        ? '/api/members'
+        : `/api/tenants/${encodeURIComponent(targetSlug)}/enroll`;
+
+      const res = await authFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email: userEmail, phone: userPhone }),
+        body: JSON.stringify({
+          name,
+          email: userEmail,
+          phone: userPhone,
+          tenantSlug: targetSlug,
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.member || typeof data.saveToWalletUrl !== 'string' || !data.saveToWalletUrl.startsWith('https://pay.google.com/gp/v/save/')) {
+      if (
+        !res.ok ||
+        !data.member ||
+        typeof data.saveToWalletUrl !== 'string' ||
+        !data.saveToWalletUrl.startsWith('https://pay.google.com/gp/v/save/')
+      ) {
         throw new Error(data.error || 'Failed to save member in database or sign Google Wallet pass.');
+      }
+
+      const pts = Number(data.member.points ?? data.pass?.points ?? 100);
+      const tier = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
+      setEnrolledMember({
+        uid: `#${data.member.member_id || data.member.id}`,
+        points: pts,
+        tier,
+      });
+      if (data.tenant?.name) {
+        setStoreInfo({
+          slug: data.tenant.slug || targetSlug,
+          name: data.tenant.name,
+          brandColor: data.tenant.brandColor || '#ff5722',
+          logoUrl: data.tenant.logoUrl,
+        });
       }
       setJwtLink(data.saveToWalletUrl);
       setIsSubmitted(true);
@@ -58,6 +155,8 @@ export const CustomerEnrollmentView: React.FC = () => {
     }
   };
 
+  const storeInitial = storeInfo.name.slice(0, 1).toUpperCase() || 'S';
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] w-full px-4 select-none max-w-2xl mx-auto py-6">
 
@@ -67,14 +166,21 @@ export const CustomerEnrollmentView: React.FC = () => {
 
         {/* Store Brand Header */}
         <div className="flex flex-col items-center text-center gap-2 mb-6 relative z-10">
-          <div className="w-16 h-16 rounded-2xl bg-[#ff5722] text-white flex items-center justify-center font-headline-lg text-headline-lg font-bold tactile-active-glow shadow-md">
-            B
+          <div
+            className="w-16 h-16 rounded-2xl text-white flex items-center justify-center font-headline-lg text-headline-lg font-bold tactile-active-glow shadow-md overflow-hidden"
+            style={{ backgroundColor: storeInfo.brandColor || '#ff5722' }}
+          >
+            {storeInfo.logoUrl ? (
+              <img src={storeInfo.logoUrl} alt={storeInfo.name} className="w-full h-full object-cover" />
+            ) : (
+              storeInitial
+            )}
           </div>
           <h2 className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight mt-1">
-            Banlis Bistro &amp; Dining
+            {storeInfo.name}
           </h2>
           <span className="px-3 py-1 rounded-full bg-primary-fixed text-[#ff5722] font-label-sm text-label-sm font-bold uppercase tracking-wider">
-            Epicurean VIP Loyalty Card
+            Filtered strictly for {storeInfo.name}
           </span>
         </div>
 
@@ -91,7 +197,7 @@ export const CustomerEnrollmentView: React.FC = () => {
                   type="text"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="e.g. Marcus Vance"
+                  placeholder="Enter customer full name"
                   className="bg-transparent w-full font-body-md text-body-md text-on-surface focus:outline-none"
                 />
               </div>
@@ -107,7 +213,7 @@ export const CustomerEnrollmentView: React.FC = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. marcus@example.com"
+                  placeholder="customer@example.com"
                   className="bg-transparent w-full font-body-md text-body-md text-on-surface focus:outline-none"
                 />
               </div>
@@ -208,7 +314,7 @@ export const CustomerEnrollmentView: React.FC = () => {
                 </svg>
               </div>
               <span className="font-label-sm text-label-sm font-mono text-outline">
-                UID: #PL-889042
+                UID: {enrolledMember.uid}
               </span>
             </div>
 
@@ -263,16 +369,19 @@ export const CustomerEnrollmentView: React.FC = () => {
                 {/* Card Top */}
                 <div className="flex items-start justify-between relative z-10">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-white text-[#ff5722] flex items-center justify-center font-bold text-xl shadow-md">
-                      B
+                    <div
+                      className="w-10 h-10 rounded-xl bg-white flex items-center justify-center font-bold text-xl shadow-md"
+                      style={{ color: storeInfo.brandColor || '#ff5722' }}
+                    >
+                      {storeInitial}
                     </div>
                     <div>
-                      <h4 className="font-bold text-[16px] leading-tight">Banlis Bistro</h4>
-                      <span className="text-[11px] text-white/80 font-medium">Epicurean Club</span>
+                      <h4 className="font-bold text-[16px] leading-tight">{storeInfo.name}</h4>
+                      <span className="text-[11px] text-white/80 font-medium">Loyalty Pass</span>
                     </div>
                   </div>
                   <span className="px-2.5 py-1 rounded-full bg-black/25 text-amber-300 font-bold text-[11px] tracking-wider uppercase border border-white/20">
-                    GOLD VIP
+                    {enrolledMember.tier}
                   </span>
                 </div>
 
@@ -282,7 +391,9 @@ export const CustomerEnrollmentView: React.FC = () => {
                     Points Balance
                   </span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-extrabold tracking-tight">1,450</span>
+                    <span className="text-4xl font-extrabold tracking-tight">
+                      {enrolledMember.points.toLocaleString()}
+                    </span>
                     <span className="text-sm font-bold text-amber-200">PTS</span>
                   </div>
                 </div>

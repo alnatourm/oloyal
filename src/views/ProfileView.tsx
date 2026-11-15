@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sounds } from '../utils/sound';
+import { authFetch } from '../utils/auth';
 
 interface ProfileViewProps {
   userRole: 'super_admin' | 'admin' | 'merchant';
@@ -81,7 +82,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setErrorMsg(null);
     try {
       if (isSuperAdmin) {
-        const res = await fetch('/api/admin/profile');
+        const res = await authFetch('/api/admin/profile');
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(data.error || 'Failed to load admin profile.');
@@ -94,7 +95,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         setIssuerId(data.issuerId || '');
         setServiceAccountEmail(data.serviceAccountEmail || '');
       } else {
-        const res = await fetch(`/api/tenants/${encodeURIComponent(activeTenantSlug)}`);
+        const res = await authFetch(`/api/tenants/${encodeURIComponent(activeTenantSlug)}`);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(data.error || 'Failed to load store profile.');
@@ -154,7 +155,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           payload.newPassword = newPassword.trim();
         }
 
-        const res = await fetch('/api/admin/profile', {
+        const res = await authFetch('/api/admin/profile', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -194,7 +195,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           payload.password = newPassword.trim();
         }
 
-        const res = await fetch(`/api/tenants/${encodeURIComponent(activeTenantSlug)}`, {
+        const res = await authFetch(`/api/tenants/${encodeURIComponent(activeTenantSlug)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),

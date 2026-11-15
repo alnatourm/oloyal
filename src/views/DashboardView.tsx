@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { CustomerMember } from '../types';
+import { authFetch, getAuthToken } from '../utils/auth';
 
 interface DashboardViewProps {
   activeSlug?: string;
+  userRole?: 'super_admin' | 'admin' | 'merchant';
   onNavigateToPassStudio?: () => void;
   onEnrollMember?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
-  activeSlug = 'banlis',
+  activeSlug = '',
+  userRole = 'merchant',
   onNavigateToPassStudio,
   onEnrollMember,
 }) => {
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const [tenant, setTenant] = useState<{
     id: string;
     slug: string;
@@ -22,11 +26,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     passCount: number;
     totalPoints: number;
   }>({
-    id: 't-banlis',
+    id: '',
     slug: activeSlug,
-    name: 'Banlis Bistro & Dining',
+    name: activeSlug || 'Store Console',
     brandColor: '#ff5722',
-    logoUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
+    logoUrl: '',
     archetype: 'loyalty',
     passCount: 0,
     totalPoints: 0,
@@ -37,37 +41,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [selectedTier, setSelectedTier] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Fetch Tenant Data & Member List for activeSlug
   useEffect(() => {
+    let cancelled = false;
+    setMembers([]);
     setIsLoading(true);
 
-    // Fetch tenant details
-    fetch(`/api/tenants/${activeSlug}`)
-      .then((res) => {
-        const contentType = res.headers.get('content-type');
-        if (res.ok && contentType && contentType.includes('application/json')) {
-          return res.json();
-        }
-        return null;
-      })
-      .then((data) => {
-        if (data && data.name) {
-          setTenant({
-            id: data.id || 't-banlis',
-            slug: data.slug || activeSlug,
-            name: data.name,
-            brandColor: data.brandColor || '#ff5722',
-            logoUrl: data.logoUrl || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop',
-            archetype: data.archetype || 'loyalty',
-            passCount: Number(data.passCount || 0),
-            totalPoints: Number(data.totalPoints || 0),
-          });
-        }
-      })
-      .catch((err) => console.error('Error fetching tenant:', err));
+    if (!getAuthToken()) {
+      setIsLoading(false);
+      return;
+    }
 
-    // Fetch tenant-filtered members
-    fetch(`/api/tenants/${activeSlug}/members`)
+    if (!activeSlug && isSuperAdmin) {
+      setIsLoading(false);
+      return;
+    }
+
+    const loadTenant = activeSlug
+      ? authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
+          .then((res) => {
+            const contentType = res.headers.get('content-type');
+            if (res.ok && contentType && contentType.includes('application/json')) {
+              return res.json();
+            }
+            return null;
+          })
+          .then((data) => {
+            if (!cancelled && data && data.name) {
+              setTenant({
+                id: data.id || '',
+                slug: data.slug || activeSlug,
+                name: data.name,
+                brandColor: data.brandColor || '#ff5722',
+                logoUrl: data.logoUrl || '',
+                archetype: data.archetype || 'loyalty',
+                passCount: Number(data.passCount || 0),
+                totalPoints: Number(data.totalPoints || 0),
+              });
+            }
+          })
+          .catch((err) => console.error('Error fetching tenant:', err))
+      : Promise.resolve();
+
+    const membersUrl =
+      isSuperAdmin && activeSlug
+        ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
+        : '/api/members';
+
+    const loadMembers = authFetch(membersUrl)
       .then((res) => {
         const contentType = res.headers.get('content-type');
         if (res.ok && contentType && contentType.includes('application/json')) {
@@ -76,18 +96,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         return [];
       })
       .then((data) => {
+        if (cancelled) return;
         if (Array.isArray(data)) {
           const mapped: CustomerMember[] = data.map((m: any) => {
             const pts = Number(m.points || 0);
             const tierStr = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
             return {
               id: m.id,
-              uid: `#PL-${m.member_id || m.id}`,
-              name: m.customer_name || 'Member',
-              avatarUrl: m.logo_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
+              uid: `#${m.member_id || m.id}`,
+              name: m.customer_name || m.name || 'Member',
+              phone: m.phone || '',
+              avatarUrl: m.logo_url || '',
               tier: tierStr,
-              tierColor: tierStr === 'PLATINUM' ? 'text-purple-500' : tierStr === 'GOLD VIP' ? 'text-primary' : 'text-on-surface',
-              tierBg: tierStr === 'PLATINUM' ? 'bg-purple-100 text-purple-800' : tierStr === 'GOLD VIP' ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-surface-container-high text-on-surface-variant',
+              tierColor:
+                tierStr === 'PLATINUM'
+                  ? 'text-purple-500'
+                  : tierStr === 'GOLD VIP'
+                  ? 'text-primary'
+                  : 'text-on-surface',
+              tierBg:
+                tierStr === 'PLATINUM'
+                  ? 'bg-purple-100 text-purple-800'
+                  : tierStr === 'GOLD VIP'
+                  ? 'bg-primary-fixed text-on-primary-fixed'
+                  : 'bg-surface-container-high text-on-surface-variant',
               points: pts,
               tierCap: 2000,
               entryPoints: 1000,
@@ -103,12 +135,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           setMembers([]);
         }
       })
-      .catch((err) => console.error('Error fetching tenant members:', err))
-      .finally(() => setIsLoading(false));
-  }, [activeSlug]);
+      .catch((err) => {
+        console.error('Error fetching tenant members:', err);
+        if (!cancelled) setMembers([]);
+      });
+
+    Promise.all([loadTenant, loadMembers]).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSlug, userRole, isSuperAdmin]);
 
   const memberCount = members.length;
   const totalPointsSum = members.reduce((acc, m) => acc + m.points, 0);
+
+  const handleDownloadJsonStream = async () => {
+    try {
+      const membersUrl =
+        isSuperAdmin && activeSlug
+          ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
+          : '/api/members';
+      const res = await authFetch(membersUrl);
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${tenant.slug || 'store'}-members.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download API JSON stream:', err);
+    }
+  };
 
   // Filter members by search and tier
   const filteredMembers = members.filter((m) => {
@@ -163,15 +225,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           )}
 
-          <a
-            href={`/api/tenants/${tenant.slug}/members`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={handleDownloadJsonStream}
             className="px-4 py-2 rounded-full bg-surface-container text-on-surface font-label-md text-label-md font-semibold tactile-btn hover:text-primary flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[18px]">api</span>
-            <span>API JSON Stream</span>
-          </a>
+            <span>Export JSON Stream</span>
+          </button>
         </div>
       </div>
 

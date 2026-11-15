@@ -1,83 +1,142 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CustomerMember } from '../types';
 import { sounds } from '../utils/sound';
+import { authFetch, getAuthToken } from '../utils/auth';
 
 interface CustomersCRMViewProps {
+  activeSlug?: string;
+  userRole?: 'super_admin' | 'admin' | 'merchant';
   onProvisionNewMember?: () => void;
 }
 
-export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionNewMember }) => {
+export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
+  activeSlug = '',
+  userRole = 'merchant',
+  onProvisionNewMember,
+}) => {
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const [members, setMembers] = useState<CustomerMember[]>([]);
+  const [storeName, setStoreName] = useState<string>(activeSlug || 'Store');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [filterSegment, setFilterSegment] = useState<'vip' | 'all' | 'pending'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    fetch('/api/passes')
-      .then((res) => res.json())
+  useEffect(() => {
+    let cancelled = false;
+    setMembers([]);
+    setSelectedMemberId('');
+    setIsLoading(true);
+    setStoreName(activeSlug || 'Store');
+
+    if (!getAuthToken()) {
+      setIsLoading(false);
+      return;
+    }
+
+    const membersUrl =
+      isSuperAdmin && activeSlug
+        ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
+        : '/api/members';
+
+    const loadMembers = authFetch(membersUrl)
+      .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
+        if (cancelled) return;
         if (Array.isArray(data)) {
           const mapped: CustomerMember[] = data.map((m: any) => {
             const pts = Number(m.points || 0);
             const tierStr = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
             return {
               id: m.id,
-              uid: `#PL-${m.member_id || m.id}`,
-              name: m.customer_name || 'Member',
-              avatarUrl: m.logo_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
+              uid: `#${m.member_id || m.id}`,
+              name: m.customer_name || m.name || 'Member',
+              phone: m.phone || '',
+              avatarUrl: m.logo_url || '',
+              initials: String(m.customer_name || m.name || 'M').slice(0, 2).toUpperCase(),
               tier: tierStr,
-              tierColor: tierStr === 'PLATINUM' ? 'text-purple-500' : tierStr === 'GOLD VIP' ? 'text-primary' : 'text-on-surface',
-              tierBg: tierStr === 'PLATINUM' ? 'bg-purple-100 text-purple-800' : tierStr === 'GOLD VIP' ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-surface-container-high text-on-surface-variant',
+              tierColor:
+                tierStr === 'PLATINUM'
+                  ? 'text-purple-500'
+                  : tierStr === 'GOLD VIP'
+                  ? 'text-primary'
+                  : 'text-on-surface',
+              tierBg:
+                tierStr === 'PLATINUM'
+                  ? 'bg-purple-100 text-purple-800'
+                  : tierStr === 'GOLD VIP'
+                  ? 'bg-primary-fixed text-on-primary-fixed'
+                  : 'bg-surface-container-high text-on-surface-variant',
               points: pts,
               tierCap: 2000,
-              entryPoints: 1000,
-              thresholdPoints: 2000,
+              entryPoints: pts >= 2000 ? 2000 : pts >= 1000 ? 1000 : 0,
+              thresholdPoints: pts >= 2000 ? 5000 : pts >= 1000 ? 2000 : 1000,
               status: 'NFC Active Node',
               joinedDate: '2026',
-              syncedTime: 'Just now',
+              syncedTime: 'Synced',
               visitCount: 1,
             };
           });
           setMembers(mapped);
+          if (mapped.length > 0) {
+            setSelectedMemberId(mapped[0].id);
+          }
+          if (data[0]?.store_name) {
+            setStoreName(data[0].store_name);
+          }
+        } else {
+          setMembers([]);
         }
       })
-      .catch((err) => console.log('Error fetching members from DB:', err));
-  }, []);
+      .catch((err) => {
+        console.error('Error fetching tenant-scoped members:', err);
+        if (!cancelled) setMembers([]);
+      });
 
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const [filterSegment, setFilterSegment] = useState<'vip' | 'all' | 'pending'>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+    const loadTenant = activeSlug
+      ? authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((t) => {
+            if (!cancelled && t?.name) {
+              setStoreName(t.name);
+            }
+          })
+          .catch(() => {})
+      : Promise.resolve();
 
-  const defaultMember: CustomerMember = {
-    id: 'demo-0',
-    uid: '#PL-000000',
-    name: 'No Enrolled Member',
-    avatarUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150&auto=format&fit=crop',
-    tier: 'SILVER',
-    tierColor: 'text-on-surface',
-    tierBg: 'bg-surface-container-high text-on-surface-variant',
-    points: 0,
-    tierCap: 2000,
-    entryPoints: 0,
-    thresholdPoints: 1000,
-    status: 'NFC Ready Node',
-    joinedDate: '2026',
-    syncedTime: 'Just now',
-    visitCount: 0,
-  };
+    Promise.all([loadMembers, loadTenant]).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
 
-  const selectedMember = members.find((m) => m.id === selectedMemberId) || members[0] || defaultMember;
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSlug, userRole, isSuperAdmin]);
+
+  const selectedMember = members.find((m) => m.id === selectedMemberId) || members[0] || null;
+  const vipCount = members.filter((m) => m.tier === 'GOLD VIP' || m.tier === 'PLATINUM').length;
+  const totalPointsPool = members.reduce((sum, m) => sum + m.points, 0);
 
   const handleSelectMember = (id: string) => {
     sounds.click();
     setSelectedMemberId(id);
   };
 
+  const triggerNotice = (msg: string) => {
+    sounds.chime();
+    setNoticeMessage(msg);
+    setTimeout(() => setNoticeMessage(null), 2500);
+  };
+
   const handleAdjustPoints = async (delta: number) => {
     sounds.dialTick();
-    const targetMemberId = selectedMember.id;
-    if (!targetMemberId || targetMemberId === 'demo-0') {
+    if (!selectedMember) {
       triggerNotice('No active member selected');
       return;
     }
+    const targetMemberId = selectedMember.id;
+    const prevPoints = selectedMember.points;
 
     // Optimistically update UI
     setMembers((prev) =>
@@ -89,8 +148,18 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             ...m,
             points: newPts,
             tier: tierStr,
-            tierColor: tierStr === 'PLATINUM' ? 'text-purple-500' : tierStr === 'GOLD VIP' ? 'text-primary' : 'text-on-surface',
-            tierBg: tierStr === 'PLATINUM' ? 'bg-purple-100 text-purple-800' : tierStr === 'GOLD VIP' ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-surface-container-high text-on-surface-variant',
+            tierColor:
+              tierStr === 'PLATINUM'
+                ? 'text-purple-500'
+                : tierStr === 'GOLD VIP'
+                ? 'text-primary'
+                : 'text-on-surface',
+            tierBg:
+              tierStr === 'PLATINUM'
+                ? 'bg-purple-100 text-purple-800'
+                : tierStr === 'GOLD VIP'
+                ? 'bg-primary-fixed text-on-primary-fixed'
+                : 'bg-surface-container-high text-on-surface-variant',
           };
         }
         return m;
@@ -98,7 +167,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
     );
 
     try {
-      const res = await fetch(`/api/members/${targetMemberId}/points`, {
+      const res = await authFetch(`/api/members/${encodeURIComponent(targetMemberId)}/points`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ points: delta, reason: delta >= 0 ? 'Manual Credit' : 'Manual Redemption' }),
@@ -115,42 +184,76 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                 ...m,
                 points: pts,
                 tier: tierStr,
+                tierColor:
+                  tierStr === 'PLATINUM'
+                    ? 'text-purple-500'
+                    : tierStr === 'GOLD VIP'
+                    ? 'text-primary'
+                    : 'text-on-surface',
+                tierBg:
+                  tierStr === 'PLATINUM'
+                    ? 'bg-purple-100 text-purple-800'
+                    : tierStr === 'GOLD VIP'
+                    ? 'bg-primary-fixed text-on-primary-fixed'
+                    : 'bg-surface-container-high text-on-surface-variant',
               };
             }
             return m;
           })
         );
         triggerNotice(`Points updated: ${pts.toLocaleString()} PTS (Synced to DB)`);
+      } else {
+        setMembers((prev) =>
+          prev.map((m) => (m.id === targetMemberId ? { ...m, points: prevPoints } : m))
+        );
+        triggerNotice(data.error || 'Failed to update points');
       }
     } catch (err) {
       console.error('Failed to sync points with backend:', err);
+      setMembers((prev) =>
+        prev.map((m) => (m.id === targetMemberId ? { ...m, points: prevPoints } : m))
+      );
+      triggerNotice('Error connecting to database');
     }
   };
 
-  const triggerNotice = (msg: string) => {
-    sounds.chime();
-    setNoticeMessage(msg);
-    setTimeout(() => setNoticeMessage(null), 2500);
+  const handleExportCsv = () => {
+    const header = 'Member ID,Name,Phone,Tier,Points,Store\n';
+    const rows = members
+      .map((m) =>
+        [m.uid, m.name, m.phone || '', m.tier, m.points, storeName]
+          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+          .join(',')
+      )
+      .join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${activeSlug || 'store'}-members-ledger.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    triggerNotice(`Exported ${members.length} members for ${storeName}`);
   };
 
   const filteredMembers = members.filter((m) => {
-    if (searchQuery) {
-      return (
-        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.uid.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
+    const matchesSearch =
+      !searchQuery ||
+      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.uid.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
     if (filterSegment === 'vip') return m.tier === 'GOLD VIP' || m.tier === 'PLATINUM';
+    if (filterSegment === 'pending') return false;
     return true;
   });
 
-  const entryPts = selectedMember.entryPoints || 0;
-  const threshPts = selectedMember.thresholdPoints || 1000;
+  const activeMember = selectedMember;
+  const entryPts = activeMember ? activeMember.entryPoints : 0;
+  const threshPts = activeMember ? activeMember.thresholdPoints : 1000;
   const denom = Math.max(1, threshPts - entryPts);
-  const progressPct = Math.min(
-    100,
-    Math.max(0, Math.round(((selectedMember.points - entryPts) / denom) * 100))
-  );
+  const progressPct = activeMember
+    ? Math.min(100, Math.max(0, Math.round(((activeMember.points - entryPts) / denom) * 100)))
+    : 0;
 
   return (
     <div className="flex flex-col w-full select-none">
@@ -161,16 +264,16 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             <span className="material-symbols-outlined text-[20px]">groups</span>
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-headline-md text-headline-md text-on-surface tracking-tight">
                 Member Registry
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-surface-container-high font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant font-semibold shadow-inner">
-                VIP Cohort
+              <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm uppercase tracking-wider font-bold">
+                Filtered strictly for {storeName}
               </span>
             </div>
             <p className="font-body-sm text-body-sm text-on-surface-variant">
-              Active digital credential cards &amp; real-time NFC token stream
+              Tenant-isolated digital credential cards for {storeName}
             </p>
           </div>
         </div>
@@ -189,7 +292,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-primary-container tactile-glow"></span>
-            VIP Tier
+            VIP Tier ({vipCount})
           </button>
           <button
             onClick={() => {
@@ -202,7 +305,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                 : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            All Members (4,821)
+            All Members ({members.length})
           </button>
           <button
             onClick={() => {
@@ -215,7 +318,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                 : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            Pending Claims
+            Pending Claims (0)
           </button>
         </div>
       </div>
@@ -246,55 +349,76 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
 
             {/* Directory List */}
             <div className="flex flex-col gap-2.5 max-h-[570px] overflow-y-auto pr-1">
-              {filteredMembers.map((member) => {
-                const isSelected = member.id === selectedMemberId;
-                return (
-                  <div
-                    key={member.id}
-                    onClick={() => handleSelectMember(member.id)}
-                    className={`p-3.5 rounded-lg cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-surface-container-lowest tactile-card border-l-4 border-l-primary-container'
-                        : 'bg-surface-container/60 hover:bg-surface-container-lowest'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="relative w-12 h-12 rounded-full bg-surface-container flex items-center justify-center shrink-0 tactile-deboss">
-                        {member.avatarUrl ? (
-                          <img
-                            className="w-11 h-11 rounded-full object-cover"
-                            src={member.avatarUrl}
-                            alt={member.name}
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center font-headline-sm text-headline-sm text-on-surface-variant font-medium">
-                            {member.initials}
-                          </div>
-                        )}
-                        <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-primary-container ring-2 ring-surface-container-lowest tactile-glow"></span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-headline-sm text-headline-sm text-on-surface truncate">
-                            {member.name}
-                          </h4>
-                          <span className={`px-2 py-0.5 rounded-full font-label-sm text-label-sm font-bold ${member.tierBg}`}>
-                            {member.tier}
-                          </span>
+              {isLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[28px] animate-spin text-primary">refresh</span>
+                  <span className="font-body-sm text-body-sm">Loading members for {storeName}...</span>
+                </div>
+              ) : filteredMembers.length === 0 ? (
+                <div className="py-10 px-4 rounded-xl bg-surface-container/40 border border-dashed border-outline-variant/40 text-center flex flex-col items-center gap-2">
+                  <span className="material-symbols-outlined text-[32px] text-outline">person_off</span>
+                  <p className="font-headline-sm text-headline-sm font-bold text-on-surface">
+                    {searchQuery || filterSegment !== 'all'
+                      ? 'No matching members'
+                      : `No members enrolled for ${storeName} yet`}
+                  </p>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant">
+                    {searchQuery || filterSegment !== 'all'
+                      ? 'Try clearing your search or switching back to All Members.'
+                      : 'Provision a new member pass to begin tracking loyalty balances.'}
+                  </p>
+                </div>
+              ) : (
+                filteredMembers.map((member) => {
+                  const isSelected = activeMember?.id === member.id;
+                  return (
+                    <div
+                      key={member.id}
+                      onClick={() => handleSelectMember(member.id)}
+                      className={`p-3.5 rounded-lg cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-surface-container-lowest tactile-card border-l-4 border-l-primary-container'
+                          : 'bg-surface-container/60 hover:bg-surface-container-lowest'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-12 h-12 rounded-full bg-surface-container flex items-center justify-center shrink-0 tactile-deboss">
+                          {member.avatarUrl ? (
+                            <img
+                              className="w-11 h-11 rounded-full object-cover"
+                              src={member.avatarUrl}
+                              alt={member.name}
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center font-headline-sm text-headline-sm text-on-surface-variant font-medium">
+                              {member.initials}
+                            </div>
+                          )}
+                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-primary-container ring-2 ring-surface-container-lowest tactile-glow"></span>
                         </div>
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="font-body-sm text-body-sm text-on-surface-variant">
-                            UID: {member.uid}
-                          </span>
-                          <span className={`font-label-md text-label-md font-semibold ${member.tierColor}`}>
-                            {member.points.toLocaleString()} pts
-                          </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-headline-sm text-headline-sm text-on-surface truncate">
+                              {member.name}
+                            </h4>
+                            <span className={`px-2 py-0.5 rounded-full font-label-sm text-label-sm font-bold ${member.tierBg}`}>
+                              {member.tier}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="font-body-sm text-body-sm text-on-surface-variant">
+                              UID: {member.uid}
+                            </span>
+                            <span className={`font-label-md text-label-md font-semibold ${member.tierColor}`}>
+                              {member.points.toLocaleString()} pts
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
 
             {/* Add Member Button */}
@@ -322,23 +446,25 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-primary-container tactile-glow animate-pulse"></span>
                 <span className="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant font-bold">
-                  {selectedMember.status}
+                  {activeMember ? activeMember.status : 'No Active Member'}
                 </span>
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container tactile-deboss text-on-surface-variant font-label-md text-label-md">
                 <span className="material-symbols-outlined text-[16px] text-primary">
                   contactless
                 </span>
-                <span>Tap Ready</span>
+                <span>{activeMember ? 'Tap Ready' : 'Idle'}</span>
               </div>
             </div>
 
             <div className="text-center mb-6">
               <h2 className="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight">
-                {selectedMember.name}
+                {activeMember ? activeMember.name : `No Enrolled Member`}
               </h2>
               <p className="font-body-sm text-body-sm text-on-surface-variant">
-                Primary Member • Pass {selectedMember.uid}-US
+                {activeMember
+                  ? `${storeName} • Pass ${activeMember.uid}`
+                  : `0 enrolled passes in ${storeName}`}
               </p>
             </div>
 
@@ -386,7 +512,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                     Accrued Balance
                   </span>
                   <span className="font-display-xl text-display-xl font-bold text-on-surface tracking-tighter leading-none mt-1">
-                    {selectedMember.points.toLocaleString()}
+                    {activeMember ? activeMember.points.toLocaleString() : '0'}
                   </span>
                   <span className="font-label-md text-label-md text-primary font-semibold mt-1">
                     PTS
@@ -394,7 +520,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                   <div className="mt-1 flex items-center gap-1 text-on-surface-variant font-body-sm text-body-sm">
                     <span>Tier Cap:</span>
                     <span className="font-semibold text-on-surface">
-                      {selectedMember.tierCap.toLocaleString()}
+                      {activeMember ? activeMember.tierCap.toLocaleString() : '2,000'}
                     </span>
                   </div>
                 </div>
@@ -413,13 +539,21 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             <div className="w-full mt-6 bg-surface-container-lowest/80 p-4 rounded-lg tactile-card flex flex-col gap-2">
               <div className="flex items-center justify-between font-label-md text-label-md">
                 <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded-full font-bold ${selectedMember.tierBg}`}>
-                    {selectedMember.tier}
+                  <span
+                    className={`px-2 py-0.5 rounded-full font-bold ${
+                      activeMember
+                        ? activeMember.tierBg
+                        : 'bg-surface-container-high text-on-surface-variant'
+                    }`}
+                  >
+                    {activeMember ? activeMember.tier : 'NONE'}
                   </span>
                   <span className="text-on-surface-variant">Upgrade Progress</span>
                 </div>
                 <span className="font-bold text-primary">
-                  {Math.max(0, selectedMember.thresholdPoints - selectedMember.points)} pts remaining
+                  {activeMember
+                    ? `${Math.max(0, activeMember.thresholdPoints - activeMember.points)} pts remaining`
+                    : '—'}
                 </span>
               </div>
               <div className="w-full h-2 rounded-full bg-surface-container tactile-deboss overflow-hidden">
@@ -429,8 +563,8 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                 ></div>
               </div>
               <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
-                <span>Entry: {selectedMember.entryPoints} pts</span>
-                <span>Threshold: {selectedMember.thresholdPoints} pts</span>
+                <span>Entry: {entryPts} pts</span>
+                <span>Threshold: {threshPts} pts</span>
               </div>
             </div>
 
@@ -438,7 +572,8 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             <div className="flex items-center justify-center gap-4 mt-6">
               <button
                 onClick={() => handleAdjustPoints(-50)}
-                className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface hover:text-primary transition-transform active:scale-95"
+                disabled={!activeMember}
+                className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface hover:text-primary transition-transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
                 title="Subtract 50 Points"
               >
                 <span className="material-symbols-outlined text-[20px]">remove</span>
@@ -453,7 +588,8 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
               </div>
               <button
                 onClick={() => handleAdjustPoints(50)}
-                className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface hover:text-primary transition-transform active:scale-95"
+                disabled={!activeMember}
+                className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface hover:text-primary transition-transform active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
                 title="Add 50 Points"
               >
                 <span className="material-symbols-outlined text-[20px]">add</span>
@@ -482,10 +618,10 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                 <div className="flex items-start justify-between relative z-10">
                   <div>
                     <span className="font-label-sm text-label-sm uppercase tracking-widest text-white/80 font-semibold block">
-                      PassLoyal VIP Core
+                      {storeName}
                     </span>
                     <span className="font-headline-sm text-headline-sm font-bold tracking-tight text-white">
-                      {selectedMember.name}
+                      {activeMember ? activeMember.name : 'No Active Pass'}
                     </span>
                   </div>
                   <span className="material-symbols-outlined text-[24px] text-white/90">
@@ -498,7 +634,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                       Tier Status
                     </span>
                     <span className="font-headline-sm text-headline-sm font-bold text-white">
-                      {selectedMember.tier}
+                      {activeMember ? activeMember.tier : '—'}
                     </span>
                   </div>
                   <div className="text-right">
@@ -506,7 +642,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                       Balance
                     </span>
                     <span className="font-headline-sm text-headline-sm font-bold text-white">
-                      {selectedMember.points.toLocaleString()} pts
+                      {activeMember ? `${activeMember.points.toLocaleString()} pts` : '0 pts'}
                     </span>
                   </div>
                 </div>
@@ -514,8 +650,8 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             </div>
 
             <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant px-1">
-              <span>Synced: {selectedMember.syncedTime}</span>
-              <span className="text-primary font-medium">Auto-Refresh On</span>
+              <span>{activeMember ? `Synced: ${activeMember.syncedTime}` : 'No enrolled card'}</span>
+              <span className="text-primary font-medium">{activeMember ? 'Auto-Refresh On' : 'Idle'}</span>
             </div>
           </div>
 
@@ -526,17 +662,21 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             </span>
             <button
               onClick={() => handleAdjustPoints(100)}
-              className="w-full py-3 px-4 rounded-full bg-primary-container text-on-primary tactile-glow flex items-center justify-between font-label-lg text-label-lg font-semibold hover:opacity-95 transition-all"
+              disabled={!activeMember}
+              className="w-full py-3 px-4 rounded-full bg-primary-container text-on-primary tactile-glow flex items-center justify-between font-label-lg text-label-lg font-semibold hover:opacity-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
             >
               <span className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[18px]">add_circle</span>
-                Credit Custom Points
+                Credit 100 Points
               </span>
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
             </button>
             <button
-              onClick={() => triggerNotice(`Push lockscreen alert sent to ${selectedMember.name}`)}
-              className="w-full py-3 px-4 rounded-full bg-surface-container text-on-surface tactile-btn flex items-center justify-between font-label-lg text-label-lg font-semibold hover:text-primary transition-all"
+              onClick={() =>
+                activeMember && triggerNotice(`Push lockscreen alert sent to ${activeMember.name}`)
+              }
+              disabled={!activeMember}
+              className="w-full py-3 px-4 rounded-full bg-surface-container text-on-surface tactile-btn flex items-center justify-between font-label-lg text-label-lg font-semibold hover:text-primary transition-all disabled:opacity-40 disabled:pointer-events-none"
             >
               <span className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[18px]">
@@ -547,8 +687,11 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
             </button>
             <button
-              onClick={() => triggerNotice(`Wallet pass link re-sent to ${selectedMember.name}`)}
-              className="w-full py-3 px-4 rounded-full bg-surface-container text-on-surface tactile-btn flex items-center justify-between font-label-lg text-label-lg font-semibold hover:text-primary transition-all"
+              onClick={() =>
+                activeMember && triggerNotice(`Wallet pass link re-sent to ${activeMember.name}`)
+              }
+              disabled={!activeMember}
+              className="w-full py-3 px-4 rounded-full bg-surface-container text-on-surface tactile-btn flex items-center justify-between font-label-lg text-label-lg font-semibold hover:text-primary transition-all disabled:opacity-40 disabled:pointer-events-none"
             >
               <span className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[18px]">forward_to_inbox</span>
@@ -557,44 +700,10 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
             </button>
           </div>
-
-          {/* Visit Frequency Spline Chart */}
-          <div className="bg-surface-container-low rounded-xl p-5 tactile-card flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant font-bold">
-                Visit Frequency
-              </span>
-              <span className="font-label-sm text-label-sm font-semibold text-primary">
-                +28% MoM
-              </span>
-            </div>
-            <div className="w-full h-20 rounded-lg bg-surface-container tactile-deboss p-2 flex items-center justify-center">
-              <svg className="w-full h-full" fill="none" viewBox="0 0 240 60">
-                <path
-                  d="M 10 45 C 40 45, 60 20, 90 28 C 120 36, 140 12, 170 15 C 200 18, 220 5, 230 4"
-                  stroke="#ff5722"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M 10 45 C 40 45, 60 20, 90 28 C 120 36, 140 12, 170 15 C 200 18, 220 5, 230 4 L 230 55 L 10 55 Z"
-                  fill="rgba(255, 87, 34, 0.08)"
-                />
-                <circle cx="170" cy="15" r="5" fill="#ff5722" className="tactile-glow" />
-                <circle cx="170" cy="15" r="2.5" fill="#ffffff" />
-              </svg>
-            </div>
-            <div className="flex justify-between font-label-sm text-label-sm text-on-surface-variant px-1 mt-1">
-              <span>Wk 1</span>
-              <span>Wk 2</span>
-              <span>Wk 3</span>
-              <span className="text-primary font-bold">Wk 4 (Peak)</span>
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* BOTTOM SECTION: Fleet Metrics Bar */}
+      {/* BOTTOM SECTION: Tenant Fleet Metrics Bar */}
       <div className="mt-6 bg-surface-container-low rounded-xl p-5 tactile-card flex flex-wrap items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-primary">
@@ -602,10 +711,10 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
           </div>
           <div>
             <h3 className="font-headline-sm text-headline-sm font-semibold text-on-surface">
-              Program Fleet Health
+              {storeName} Pass Summary
             </h3>
             <p className="font-body-sm text-body-sm text-on-surface-variant">
-              Real-time pass retention across 18 regional POS nodes
+              Strict tenant isolation • Filtered strictly for {storeName}
             </p>
           </div>
         </div>
@@ -620,7 +729,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
                 Active Passes
               </span>
               <span className="font-headline-sm text-headline-sm font-bold text-on-surface">
-                3,842
+                {members.length}
               </span>
             </div>
           </div>
@@ -630,10 +739,10 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             </span>
             <div>
               <span className="font-label-sm text-label-sm uppercase font-bold text-on-surface-variant block">
-                Retained Cohort
+                VIP Cohort
               </span>
               <span className="font-headline-sm text-headline-sm font-bold text-primary">
-                98.4%
+                {vipCount}
               </span>
             </div>
           </div>
@@ -643,16 +752,17 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({ onProvisionN
             </span>
             <div>
               <span className="font-label-sm text-label-sm uppercase font-bold text-on-surface-variant block">
-                Avg Redemption
+                Total Points
               </span>
               <span className="font-headline-sm text-headline-sm font-bold text-on-surface">
-                4.2d
+                {totalPointsPool.toLocaleString()}
               </span>
             </div>
           </div>
           <button
-            onClick={() => triggerNotice('Ledger CSV Exported')}
-            className="px-5 py-3 rounded-full bg-surface-container text-on-surface hover:text-primary tactile-btn flex items-center gap-2 font-label-lg text-label-lg font-semibold"
+            onClick={handleExportCsv}
+            disabled={members.length === 0}
+            className="px-5 py-3 rounded-full bg-surface-container text-on-surface hover:text-primary tactile-btn flex items-center gap-2 font-label-lg text-label-lg font-semibold disabled:opacity-40 disabled:pointer-events-none"
           >
             <span className="material-symbols-outlined text-[18px]">download</span>
             Export Ledger

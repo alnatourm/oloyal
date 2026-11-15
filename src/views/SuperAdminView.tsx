@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sounds } from '../utils/sound';
+import { authFetch } from '../utils/auth';
 
 export interface TenantStore {
   id: string;
@@ -107,8 +108,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   const fetchTenants = async () => {
     try {
       const [allRes, pendingRes] = await Promise.all([
-        fetch('/api/tenants'),
-        fetch('/api/tenants?status=Pending'),
+        authFetch('/api/tenants'),
+        authFetch('/api/tenants?status=Pending'),
       ]);
       const allData = await allRes.json();
       const pendingData = await pendingRes.json().catch(() => []);
@@ -141,7 +142,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   const handleApproveTenant = async (tenant: TenantStore) => {
     sounds.chime();
     try {
-      const res = await fetch(`/api/tenants/${tenant.slug}`, {
+      const res = await authFetch(`/api/tenants/${tenant.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'Active' }),
@@ -161,7 +162,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
   const handleRejectTenant = async (tenant: TenantStore) => {
     sounds.click(400, 0.05);
     try {
-      const res = await fetch(`/api/tenants/${tenant.slug}`, {
+      const res = await authFetch(`/api/tenants/${tenant.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'Rejected' }),
@@ -187,7 +188,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/tenants', {
+      const res = await authFetch('/api/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -239,7 +240,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     setManagingTenant(updated);
 
     try {
-      await fetch(`/api/tenants/${updated.slug}`, {
+      await authFetch(`/api/tenants/${updated.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -283,7 +284,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     sounds.click(400, 0.05);
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/tenants/${slug}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/tenants/${slug}`, { method: 'DELETE' });
       if (res.ok) {
         setTenants((prev) => prev.filter((t) => t.id !== tenantId && t.slug !== slug));
         setManagingTenant(null);
@@ -307,7 +308,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     sounds.click();
     setIsSavingPassword(true);
     try {
-      const res = await fetch(`/api/tenants/${slug}`, {
+      const res = await authFetch(`/api/tenants/${slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: newPw.trim() }),
@@ -330,7 +331,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     const targetStatus = tenant.status === 'Suspended' ? 'Active' : 'Suspended';
     sounds.click(targetStatus === 'Suspended' ? 400 : 800, 0.04);
     try {
-      const res = await fetch(`/api/tenants/${tenant.slug}`, {
+      const res = await authFetch(`/api/tenants/${tenant.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: targetStatus }),
@@ -1755,7 +1756,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                 setIsTestingConn(true);
                 sounds.chime();
                 try {
-                  await fetch('/api/credentials', {
+                  await authFetch('/api/credentials', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

@@ -1,10 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { sounds } from '../utils/sound';
+import { authFetch, getAuthToken } from '../utils/auth';
 
-export const SaaSBillingView: React.FC = () => {
+interface SaaSBillingViewProps {
+  activeSlug?: string;
+  userRole?: 'super_admin' | 'admin' | 'merchant';
+}
+
+export const SaaSBillingView: React.FC<SaaSBillingViewProps> = ({
+  activeSlug = '',
+  userRole = 'merchant',
+}) => {
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'growth' | 'scale'>('growth');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [notice, setNotice] = useState<string | null>(null);
+  const [storeName, setStoreName] = useState<string>(activeSlug || 'Store Console');
+  const [passUsage, setPassUsage] = useState<{ current: number; limit: number; percentage: number }>({
+    current: 0,
+    limit: 5000,
+    percentage: 0,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setStoreName(activeSlug || 'Store Console');
+    setPassUsage({ current: 0, limit: 5000, percentage: 0 });
+
+    if (!activeSlug || !getAuthToken()) return;
+
+    authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}/billing`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.storeName) setStoreName(data.storeName);
+        if (data.plan === 'starter' || data.plan === 'growth' || data.plan === 'scale') {
+          setSelectedPlan(data.plan);
+        }
+        if (data.passUsage) {
+          setPassUsage({
+            current: Number(data.passUsage.current || 0),
+            limit: Number(data.passUsage.limit || 5000),
+            percentage: Number(data.passUsage.percentage || 0),
+          });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSlug]);
 
   const plans = [
     {
@@ -57,10 +103,39 @@ export const SaaSBillingView: React.FC = () => {
     },
   ];
 
-  const handleSelectPlan = (planId: 'starter' | 'growth' | 'scale') => {
+  const handleSelectPlan = async (planId: 'starter' | 'growth' | 'scale') => {
     sounds.chime();
+    if (!isSuperAdmin) {
+      setNotice(`Upgrade request for ${planId.toUpperCase()} noted — contact Super Admin to change package limits.`);
+      setTimeout(() => setNotice(null), 3500);
+      return;
+    }
+
+    if (activeSlug && getAuthToken()) {
+      try {
+        const res = await authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: planId }),
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setSelectedPlan(planId);
+          const nextLimit = Number(data?.tenant?.passLimit || (planId === 'scale' ? 50000 : planId === 'starter' ? 500 : 5000));
+          setPassUsage((prev) => ({
+            ...prev,
+            limit: nextLimit,
+            percentage: nextLimit > 0 ? Math.min(100, Math.round((prev.current / nextLimit) * 1000) / 10) : 0,
+          }));
+          setNotice(`Updated ${storeName} to ${planId.toUpperCase()} Plan in Neon DB.`);
+          setTimeout(() => setNotice(null), 3000);
+          return;
+        }
+      } catch {}
+    }
+
     setSelectedPlan(planId);
-    setNotice(`Subscribed to ${planId.toUpperCase()} Plan! Master Issuer Limits Updated.`);
+    setNotice(`Plan updated to ${planId.toUpperCase()}.`);
     setTimeout(() => setNotice(null), 3000);
   };
 
@@ -69,17 +144,20 @@ export const SaaSBillingView: React.FC = () => {
       {/* Header Banner */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-6 rounded-xl bg-surface-container-low tactile-card">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="w-3 h-3 rounded-full bg-primary-container tactile-glow animate-pulse"></span>
             <span className="font-label-md text-label-md uppercase tracking-wider text-primary font-bold">
               Master Issuer SaaS Engine
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm uppercase tracking-wider font-bold">
+              Filtered strictly for {storeName}
             </span>
           </div>
           <h2 className="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight mt-1">
             Subscription Plans &amp; Tenant Limits
           </h2>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Issuer ID: 3388000000022258509 • Active Google Pay Service Account Credentials
+            Store: {storeName} • Issuer ID: 3388000000022258509
           </p>
         </div>
 
@@ -90,15 +168,21 @@ export const SaaSBillingView: React.FC = () => {
               Tenant Pass Meter
             </span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface">
-              3,842 <span className="text-body-sm font-normal text-on-surface-variant">/ 5,000</span>
+              {passUsage.current.toLocaleString()}{' '}
+              <span className="text-body-sm font-normal text-on-surface-variant">
+                / {passUsage.limit.toLocaleString()}
+              </span>
             </span>
           </div>
           <div className="w-32 flex flex-col gap-1.5">
             <div className="flex justify-between font-label-sm text-label-sm font-bold text-primary">
-              <span>76.8% Used</span>
+              <span>{passUsage.percentage}% Used</span>
             </div>
             <div className="w-full h-2 rounded-full bg-surface-container-highest overflow-hidden">
-              <div className="h-full bg-primary-container rounded-full tactile-glow" style={{ width: '76.8%' }}></div>
+              <div
+                className="h-full bg-primary-container rounded-full tactile-glow transition-all"
+                style={{ width: `${Math.min(100, passUsage.percentage)}%` }}
+              ></div>
             </div>
           </div>
         </div>

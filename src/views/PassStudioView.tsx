@@ -1,90 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArchetypeKey, PassArchetype, SwatchColor } from '../types';
 import { sounds } from '../utils/sound';
+import { authFetch, getAuthToken } from '../utils/auth';
 
 interface PassStudioViewProps {
+  activeSlug?: string;
+  userRole?: 'super_admin' | 'admin' | 'merchant';
   onPublishToFleet?: () => void;
 }
 
-export const PassStudioView: React.FC<PassStudioViewProps> = ({ onPublishToFleet }) => {
-  const archetypes: Record<ArchetypeKey, PassArchetype> = {
-    loyalty: {
-      id: 'PASS-BANLIS-VIP-01',
-      title: 'Epicurean VIP Club',
-      merchant: 'Banlis Bistro & Dining',
-      avatar: 'B',
-      badge: 'Epicurean VIP Club',
-      holderLabel: 'Cardholder',
-      holderName: 'Marcus Vance',
-      tierText: 'Gold VIP Tier',
-      tierIcon: 'stars',
-      tierBg: 'bg-primary-container/15',
-      tierColor: 'text-primary-container',
-      metricLabel: 'Balance',
-      metricValue: '1,450',
-      submetricValue: '$14.50 Value',
-      nfcIcon: 'contactless',
-      nfcText: 'Hold near terminal to redeem',
-      barcodeType: 'barcode',
-      barcodeNum: '9802 4410 7719 3321',
-      showExtra: false,
-      rotaryDeg: 0,
-      dialSubtitle: 'Pass Class 01 • NFC Ready',
-      stepperLabel: 'Loyalty / Class 01',
-      accentColor: '#ff5722',
-    },
-    gift: {
-      id: 'PASS-BANLIS-GFT-02',
-      title: 'Banlis Gift Card Voucher',
-      merchant: 'Banlis Bistro & Dining',
-      avatar: '🎁',
-      badge: 'Gift Card',
-      holderLabel: 'Recipient',
-      holderName: 'Marcus Vance',
-      tierText: 'Card #9802 • PIN: ••••',
-      tierIcon: 'lock_reset',
-      tierBg: 'bg-[#107c41]/15',
-      tierColor: 'text-[#107c41]',
-      metricLabel: 'Gift Balance',
-      metricValue: '$125.00',
-      submetricValue: 'Original: $150.00',
-      nfcIcon: 'qr_code_scanner',
-      nfcText: 'Scan at cashier terminal to spend',
-      barcodeType: 'qr',
-      barcodeNum: 'GIFT-9802-8812-7740',
-      showExtra: false,
-      rotaryDeg: 45,
-      dialSubtitle: 'Class 02 • Stored Value',
-      stepperLabel: 'Gift Card / Class 02',
-      accentColor: '#107c41',
-    },
-    ticket: {
-      id: 'PASS-BANLIS-EVT-03',
-      title: "Chef's Tasting Experience",
-      merchant: 'Banlis Evening Event',
-      avatar: '🎟️',
-      badge: "Chef's Tasting Ticket",
-      holderLabel: 'Guest',
-      holderName: 'Marcus Vance (2 Persons)',
-      tierText: 'Friday, Nov 15, 2024',
-      tierIcon: 'event',
-      tierBg: 'bg-[#007caf]/15',
-      tierColor: 'text-[#007caf]',
-      metricLabel: 'Seat & Time',
-      metricValue: 'Table 08 • 7:30 PM',
-      submetricValue: 'Main Dining Pavilion',
-      nfcIcon: 'sensor_door',
-      nfcText: 'Present at entrance gate',
-      barcodeType: 'qr',
-      barcodeNum: 'TKT-2024-EVT-4409',
-      showExtra: true,
-      rotaryDeg: 90,
-      dialSubtitle: 'Class 03 • Single Admission',
-      stepperLabel: 'Ticket / Class 03',
-      accentColor: '#007caf',
-    },
-  };
-
+export const PassStudioView: React.FC<PassStudioViewProps> = ({
+  activeSlug = '',
+  onPublishToFleet,
+}) => {
   const swatches: SwatchColor[] = [
     { name: 'Terracotta', color: '#ff5722', dark: '#421305', glow: 'rgba(255, 87, 34, 0.4)' },
     { name: 'Obsidian', color: '#1e2530', dark: '#0f131a', glow: 'rgba(30, 37, 48, 0.4)' },
@@ -96,9 +24,135 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({ onPublishToFleet
   const [currentArchetypeKey, setCurrentArchetypeKey] = useState<ArchetypeKey>('loyalty');
   const [selectedSwatch, setSelectedSwatch] = useState<SwatchColor>(swatches[0]);
   const [sheenValue, setSheenValue] = useState<number>(72);
-  const [merchantName, setMerchantName] = useState<string>('Banlis Bistro & Dining');
-  const [programTitle, setProgramTitle] = useState<string>('Epicurean VIP Club');
-  
+  const [merchantName, setMerchantName] = useState<string>(activeSlug || 'Store Console');
+  const [programTitle, setProgramTitle] = useState<string>('VIP Loyalty Club');
+  const [tenantClassId, setTenantClassId] = useState<string>('');
+  const [activePassCount, setActivePassCount] = useState<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMerchantName(activeSlug || 'Store Console');
+    setActivePassCount(0);
+    setTenantClassId('');
+
+    if (!activeSlug || !getAuthToken()) return;
+
+    authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.name) {
+          setMerchantName(data.name);
+          setProgramTitle(`${data.name} Rewards`);
+        }
+        if (data.classId) setTenantClassId(data.classId);
+        setActivePassCount(Number(data.passCount || 0));
+        if (data.archetype === 'loyalty' || data.archetype === 'gift' || data.archetype === 'ticket') {
+          setCurrentArchetypeKey(data.archetype);
+        }
+        if (data.brandColor) {
+          const matched = swatches.find(
+            (s) => s.color.toLowerCase() === String(data.brandColor).toLowerCase()
+          );
+          if (matched) {
+            setSelectedSwatch(matched);
+          } else {
+            setSelectedSwatch({
+              name: 'Custom',
+              color: data.brandColor,
+              dark: '#1e2530',
+              glow: 'rgba(255, 87, 34, 0.35)',
+            });
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSlug]);
+
+  const storeMonogram = merchantName.slice(0, 1).toUpperCase() || 'S';
+
+  const archetypes: Record<ArchetypeKey, PassArchetype> = {
+    loyalty: {
+      id: tenantClassId || `PASS-${(activeSlug || 'STORE').toUpperCase()}-VIP`,
+      title: `${merchantName} VIP Club`,
+      merchant: merchantName,
+      avatar: storeMonogram,
+      badge: 'VIP Loyalty Club',
+      holderLabel: 'Cardholder Sample',
+      holderName: 'Sample Member',
+      tierText: 'SILVER / VIP Tier',
+      tierIcon: 'stars',
+      tierBg: 'bg-primary-container/15',
+      tierColor: 'text-primary-container',
+      metricLabel: 'Balance',
+      metricValue: '100',
+      submetricValue: 'Welcome Bonus',
+      nfcIcon: 'contactless',
+      nfcText: 'Hold near terminal to redeem',
+      barcodeType: 'barcode',
+      barcodeNum: 'PL-000000',
+      showExtra: false,
+      rotaryDeg: 0,
+      dialSubtitle: 'Pass Class 01 • NFC Ready',
+      stepperLabel: 'Loyalty / Class 01',
+      accentColor: selectedSwatch.color,
+    },
+    gift: {
+      id: tenantClassId || `PASS-${(activeSlug || 'STORE').toUpperCase()}-GFT`,
+      title: `${merchantName} Gift Voucher`,
+      merchant: merchantName,
+      avatar: '🎁',
+      badge: 'Gift Card',
+      holderLabel: 'Recipient Sample',
+      holderName: 'Sample Recipient',
+      tierText: 'Stored Value Card',
+      tierIcon: 'lock_reset',
+      tierBg: 'bg-[#107c41]/15',
+      tierColor: 'text-[#107c41]',
+      metricLabel: 'Gift Balance',
+      metricValue: '$100.00',
+      submetricValue: 'Issued Credit',
+      nfcIcon: 'qr_code_scanner',
+      nfcText: 'Scan at cashier terminal to spend',
+      barcodeType: 'qr',
+      barcodeNum: 'GIFT-0000-0000',
+      showExtra: false,
+      rotaryDeg: 45,
+      dialSubtitle: 'Class 02 • Stored Value',
+      stepperLabel: 'Gift Card / Class 02',
+      accentColor: '#107c41',
+    },
+    ticket: {
+      id: tenantClassId || `PASS-${(activeSlug || 'STORE').toUpperCase()}-EVT`,
+      title: `${merchantName} Event Pass`,
+      merchant: merchantName,
+      avatar: '🎟️',
+      badge: 'Admission Ticket',
+      holderLabel: 'Guest Sample',
+      holderName: 'Sample Guest',
+      tierText: 'Scheduled Admission',
+      tierIcon: 'event',
+      tierBg: 'bg-[#007caf]/15',
+      tierColor: 'text-[#007caf]',
+      metricLabel: 'Admission',
+      metricValue: 'VIP Access',
+      submetricValue: 'Main Venue',
+      nfcIcon: 'sensor_door',
+      nfcText: 'Present at entrance gate',
+      barcodeType: 'qr',
+      barcodeNum: 'TKT-0000-EVT',
+      showExtra: true,
+      rotaryDeg: 90,
+      dialSubtitle: 'Class 03 • Single Admission',
+      stepperLabel: 'Ticket / Class 03',
+      accentColor: '#007caf',
+    },
+  };
+
   // Cardholder field toggles
   const [fields, setFields] = useState({
     pointsBalance: true,
@@ -118,7 +172,6 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({ onPublishToFleet
     sounds.dialTick();
     setCurrentArchetypeKey(key);
     setProgramTitle(archetypes[key].title);
-    setMerchantName(archetypes[key].merchant);
   };
 
   const handleNextArchetype = () => {
@@ -153,8 +206,23 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({ onPublishToFleet
     setTimeout(() => setSimTapStatus(false), 1800);
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     sounds.chime();
+    if (activeSlug && getAuthToken()) {
+      try {
+        await authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: merchantName,
+            brandColor: selectedSwatch.color,
+            archetype: currentArchetypeKey,
+          }),
+        });
+      } catch (err) {
+        console.error('Failed to publish pass template:', err);
+      }
+    }
     setPublishStatus(true);
     if (onPublishToFleet) onPublishToFleet();
     setTimeout(() => setPublishStatus(false), 2500);
@@ -165,13 +233,16 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({ onPublishToFleet
       {/* TOP SUB-HEADER / TOOL RIBBON */}
       <header className="w-full bg-surface-container-low rounded-xl px-6 py-3 tactile-convex flex flex-wrap items-center justify-between gap-4">
         {/* Left: Breadcrumb & Class ID */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface tactile-deboss">
             <span className="material-symbols-outlined text-primary-container text-[18px]">verified</span>
             <span className="font-label-md text-label-md text-on-surface tracking-wider uppercase">Pass Studio</span>
             <span className="text-outline-variant">/</span>
             <span className="font-label-md text-label-md text-on-surface-variant font-medium">Loyalty Pass Designer</span>
           </div>
+          <span className="px-3 py-1 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm uppercase tracking-wider font-bold">
+            Filtered strictly for {merchantName}
+          </span>
           <div className="px-3 py-1.5 rounded-full bg-surface-container-lowest tactile-convex-sm font-label-sm text-label-sm text-outline tracking-wider font-semibold">
             ID: {activeArchetype.id}
           </div>
@@ -839,9 +910,9 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({ onPublishToFleet
                   Fleet Deployment Velocity
                 </span>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-headline-lg text-headline-lg text-on-surface font-bold">3,842</span>
+                  <span className="font-headline-lg text-headline-lg text-on-surface font-bold">{activePassCount}</span>
                   <span className="font-label-sm text-label-sm text-primary font-bold bg-primary-container/15 px-2 py-0.5 rounded-full">
-                    +28% MoM
+                    {merchantName}
                   </span>
                 </div>
               </div>

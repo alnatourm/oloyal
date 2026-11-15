@@ -44,8 +44,9 @@ export const Header: React.FC<HeaderProps> = ({
     if (onSearch) onSearch(e.target.value);
   };
 
+  const isAdmin = userRole === 'super_admin' || userRole === 'admin';
   const activeTenant = tenants.find((t) => t.slug === activeTenantSlug) || tenants[0];
-  const activeTenantName = activeTenant?.name || activeTenantSlug || 'Banlis Bistro';
+  const activeTenantName = activeTenant?.name || activeTenantSlug || 'Store Console';
 
   return (
     <header className="fixed top-6 left-28 lg:left-32 right-6 h-16 bg-surface-container-low/90 backdrop-blur-xl rounded-xl tactile-convex z-40 px-6 flex items-center justify-between transition-all">
@@ -58,8 +59,8 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        {/* Tenant Switcher Dropdown */}
-        {tenants.length > 0 && onSelectTenant && (
+        {/* Tenant Switcher Dropdown (Super Admin only) */}
+        {isAdmin && tenants.length > 0 && onSelectTenant && (
           <div className="relative">
             <button
               onClick={() => {

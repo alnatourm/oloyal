@@ -17,13 +17,28 @@ import { PrivacyPolicyView } from './views/PrivacyPolicyView';
 import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
 
+import {
+  AUTH_ROLE_KEY,
+  AUTH_TENANT_ID_KEY,
+  AUTH_TENANT_SLUG_KEY,
+  AUTH_TOKEN_KEY,
+  AUTH_USER_EMAIL_KEY,
+  authFetch,
+  clearAuthStorage,
+  getAuthToken,
+} from './utils/auth';
+
 export default function App() {
   const [userRole, setUserRole] = useState<'super_admin' | 'admin' | 'merchant'>(() => {
-    return (localStorage.getItem('passloyal_role') as 'super_admin' | 'admin' | 'merchant') || 'merchant';
+    const token = getAuthToken();
+    if (!token) return 'merchant';
+    return (localStorage.getItem(AUTH_ROLE_KEY) as 'super_admin' | 'admin' | 'merchant') || 'merchant';
   });
   const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const [currentPath, setCurrentPath] = useState<NavigationPath>(() => {
-    const savedRole = localStorage.getItem('passloyal_role');
+    const token = getAuthToken();
+    const savedRole = localStorage.getItem(AUTH_ROLE_KEY);
+    if (!token || !savedRole) return 'landing';
     if (savedRole === 'super_admin' || savedRole === 'admin') return 'super-admin';
     if (savedRole === 'merchant') return 'dashboard';
     return 'landing';
@@ -31,12 +46,12 @@ export default function App() {
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Multi-Tenant Context State
+  // Multi-Tenant Context State (no hardcoded cross-tenant fallback)
   const [activeTenantSlug, setActiveTenantSlug] = useState<string>(() => {
-    return localStorage.getItem('passloyal_tenant_slug') || 'banlis';
+    return getAuthToken() ? localStorage.getItem(AUTH_TENANT_SLUG_KEY) || '' : '';
   });
   const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('passloyal_user_email') || '';
+    return getAuthToken() ? localStorage.getItem(AUTH_USER_EMAIL_KEY) || '' : '';
   });
   const [tenants, setTenants] = useState<Array<{ id: string; slug: string; name: string; logoUrl?: string; brandColor?: string }>>([]);
 
@@ -49,22 +64,89 @@ export default function App() {
     }
   }, [currentPath, isSuperAdmin]);
 
-  const fetchTenants = () => {
-    fetch('/api/tenants')
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setTenants(data);
-          if (data.length > 0 && (!activeTenantSlug || activeTenantSlug === 'banlis')) {
-            setActiveTenantSlug(data[0].slug || 'banlis');
+  const fetchTenants = async () => {
+    const token = getAuthToken();
+    if (!token) {
+      setTenants([]);
+      return;
+    }
+    try {
+      const res = await authFetch('/api/tenants');
+      if (res.status === 401) {
+        clearAuthStorage();
+        setTenants([]);
+        setActiveTenantSlug('');
+        setCurrentPath('landing');
+        return;
+      }
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setTenants(data);
+        const roleNow = localStorage.getItem(AUTH_ROLE_KEY);
+        if (roleNow === 'merchant' && data.length > 0 && data[0]?.slug) {
+          setActiveTenantSlug(data[0].slug);
+          localStorage.setItem(AUTH_TENANT_SLUG_KEY, data[0].slug);
+          if (data[0]?.id) {
+            localStorage.setItem(AUTH_TENANT_ID_KEY, data[0].id);
           }
+        } else if ((roleNow === 'super_admin' || roleNow === 'admin') && data.length > 0 && !activeTenantSlug) {
+          setActiveTenantSlug(data[0].slug || '');
         }
-      })
-      .catch((err) => console.error('Error fetching tenants list:', err));
+      }
+    } catch (err) {
+      console.error('Error fetching tenants list:', err);
+    }
   };
 
   useEffect(() => {
-    fetchTenants();
+    const token = getAuthToken();
+    const savedRole = localStorage.getItem(AUTH_ROLE_KEY);
+
+    if (!token) {
+      if (savedRole) {
+        clearAuthStorage();
+      }
+      setActiveTenantSlug('');
+      setTenants([]);
+      if (currentPath !== 'landing' && currentPath !== 'merchant-auth' && currentPath !== 'privacy' && currentPath !== 'terms' && currentPath !== 'customer-join') {
+        setCurrentPath('landing');
+      }
+      return;
+    }
+
+    authFetch('/api/auth/me')
+      .then(async (res) => {
+        if (!res.ok) {
+          clearAuthStorage();
+          setUserRole('merchant');
+          setUserEmail('');
+          setActiveTenantSlug('');
+          setTenants([]);
+          setCurrentPath('landing');
+          return;
+        }
+        const me = await res.json().catch(() => null);
+        if (me?.user?.role) {
+          const roleVal = me.user.role as 'super_admin' | 'admin' | 'merchant';
+          setUserRole(roleVal);
+          localStorage.setItem(AUTH_ROLE_KEY, roleVal);
+          if (me.user.email) {
+            setUserEmail(me.user.email);
+            localStorage.setItem(AUTH_USER_EMAIL_KEY, me.user.email);
+          }
+          if (roleVal === 'merchant' && me.user.tenantSlug) {
+            setActiveTenantSlug(me.user.tenantSlug);
+            localStorage.setItem(AUTH_TENANT_SLUG_KEY, me.user.tenantSlug);
+            if (me.user.tenantId) {
+              localStorage.setItem(AUTH_TENANT_ID_KEY, me.user.tenantId);
+            }
+          }
+        }
+        fetchTenants();
+      })
+      .catch(() => {
+        // Leave state intact on transient network failure
+      });
   }, []);
 
   const handleNavigate = (path: NavigationPath) => {
@@ -79,17 +161,18 @@ export default function App() {
   const handleLogout = () => {
     setUserRole('merchant');
     setUserEmail('');
-    localStorage.removeItem('passloyal_role');
-    localStorage.removeItem('passloyal_token');
-    localStorage.removeItem('passloyal_user_email');
+    setActiveTenantSlug('');
+    setTenants([]);
+    clearAuthStorage();
     setToastMessage('Signed out successfully.');
     setCurrentPath('landing');
     setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleSelectTenant = (slug: string) => {
+    if (!isSuperAdmin) return;
     setActiveTenantSlug(slug);
-    localStorage.setItem('passloyal_tenant_slug', slug);
+    localStorage.setItem(AUTH_TENANT_SLUG_KEY, slug);
     setCurrentPath('dashboard');
   };
 
@@ -103,17 +186,35 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleLoginSuccess = (slug?: string, tenantName?: string, role?: 'super_admin' | 'admin' | 'merchant', email?: string) => {
+  const handleLoginSuccess = (
+    slug?: string,
+    tenantName?: string,
+    role?: 'super_admin' | 'admin' | 'merchant',
+    email?: string,
+    token?: string,
+    tenantId?: string
+  ) => {
     const assignedRole = role || (slug ? 'merchant' : 'super_admin');
     setUserRole(assignedRole);
-    localStorage.setItem('passloyal_role', assignedRole);
+    localStorage.setItem(AUTH_ROLE_KEY, assignedRole);
+    if (token) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    }
+    if (tenantId) {
+      localStorage.setItem(AUTH_TENANT_ID_KEY, tenantId);
+    } else if (assignedRole !== 'merchant') {
+      localStorage.removeItem(AUTH_TENANT_ID_KEY);
+    }
     if (email) {
       setUserEmail(email);
-      localStorage.setItem('passloyal_user_email', email);
+      localStorage.setItem(AUTH_USER_EMAIL_KEY, email);
     }
     if (slug) {
       setActiveTenantSlug(slug);
-      localStorage.setItem('passloyal_tenant_slug', slug);
+      localStorage.setItem(AUTH_TENANT_SLUG_KEY, slug);
+    } else if (assignedRole !== 'merchant') {
+      setActiveTenantSlug('');
+      localStorage.removeItem(AUTH_TENANT_SLUG_KEY);
     }
     fetchTenants();
     if (assignedRole === 'super_admin' || assignedRole === 'admin') {
@@ -142,8 +243,8 @@ export default function App() {
             openScannerModal={openScanner}
             onQuickNotice={() => setToastMessage('System Update: Smart Tap v3.2 Cryptographic Session Active.')}
             activeTenantSlug={activeTenantSlug}
-            tenants={tenants}
-            onSelectTenant={handleSelectTenant}
+            tenants={isSuperAdmin ? tenants : []}
+            onSelectTenant={isSuperAdmin ? handleSelectTenant : undefined}
             onNavigateToAuth={() => setCurrentPath('merchant-auth')}
             onNavigateToProfile={() => setCurrentPath('profile')}
             onNavigateToAdmin={() => setCurrentPath('super-admin')}
@@ -167,6 +268,7 @@ export default function App() {
         {currentPath === 'dashboard' && (
           <DashboardView
             activeSlug={activeTenantSlug}
+            userRole={userRole}
             onNavigateToPassStudio={() => setCurrentPath('pass-studio')}
             onEnrollMember={() => setCurrentPath('customer-join')}
           />
@@ -174,26 +276,39 @@ export default function App() {
         
         {currentPath === 'pass-studio' && (
           <PassStudioView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
             onPublishToFleet={() => {
-              setToastMessage('Pass Template Published to 18 Active Regional POS Nodes!');
+              setToastMessage(`Pass Template Published for ${activeTenantSlug || 'Store'}!`);
               setTimeout(() => setToastMessage(null), 3500);
             }}
           />
         )}
 
         {currentPath === 'pos-cashier' && (
-          <CashierView openScannerModal={openScanner} />
+          <CashierView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
+            openScannerModal={openScanner}
+          />
         )}
 
         {currentPath === 'customers-crm' && (
           <CustomersCRMView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
             onProvisionNewMember={() => {
               setCurrentPath('customer-join');
             }}
           />
         )}
 
-        {currentPath === 'customer-join' && <CustomerEnrollmentView />}
+        {currentPath === 'customer-join' && (
+          <CustomerEnrollmentView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
+          />
+        )}
 
         {currentPath === 'merchant-auth' && (
           <MerchantAuthView
@@ -204,12 +319,18 @@ export default function App() {
           />
         )}
 
-        {currentPath === 'billing' && <SaaSBillingView />}
+        {currentPath === 'billing' && (
+          <SaaSBillingView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
+          />
+        )}
 
         {currentPath === 'super-admin' && isSuperAdmin && (
           <SuperAdminView
             onSelectTenantDashboard={(slug) => {
               setActiveTenantSlug(slug);
+              localStorage.setItem(AUTH_TENANT_SLUG_KEY, slug);
               setCurrentPath('dashboard');
             }}
           />

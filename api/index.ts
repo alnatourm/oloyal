@@ -12,7 +12,7 @@ app.use((req, _res, next) => {
     try {
       req.body = JSON.parse(req.body);
     } catch {
-      // Leave body untouched if invalid JSON string
+      // Leave body untouched
     }
   }
   next();
@@ -27,6 +27,72 @@ let SERVICE_ACCOUNT_EMAIL =
   process.env.GOOGLE_CLIENT_EMAIL ||
   'oloyal-wallet-sa@banlis-bistro-app.iam.gserviceaccount.com';
 let PRIVATE_KEY_PEM = process.env.GOOGLE_PRIVATE_KEY || '';
+
+// Stable HMAC secret derived cleanly for signing/verifying auth tokens across serverless invocations
+const AUTH_SECRET =
+  process.env.AUTH_SECRET ||
+  process.env.SESSION_SECRET ||
+  process.env.JWT_SECRET ||
+  crypto
+    .createHash('sha256')
+    .update(`passloyal-os-auth:${DATABASE_URL || 'local'}:${process.env.ADMIN_PASSWORD_HASH || ''}`)
+    .digest('hex');
+
+interface AuthContext {
+  role: 'super_admin' | 'admin' | 'merchant';
+  tenantId?: string;
+  tenantSlug?: string;
+  email?: string;
+  iat: number;
+  exp: number;
+}
+
+function signAuthToken(payload: Omit<AuthContext, 'iat' | 'exp'>): string {
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload: AuthContext = {
+    ...payload,
+    iat: now,
+    exp: now + 60 * 60 * 24 * 7, // 7 days
+  };
+  const body = Buffer.from(JSON.stringify(fullPayload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function verifyAuthToken(req: Request): AuthContext | null {
+  const authHeader = String(req.headers.authorization || req.headers['x-auth-token'] || '').trim();
+  const token = authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.slice(7).trim()
+    : authHeader;
+
+  if (!token || !token.includes('.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [body, sig] = parts;
+
+  try {
+    const expectedSig = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url');
+    const sigBuf = Buffer.from(sig);
+    const expBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return null;
+    }
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as AuthContext;
+    if (!parsed || !parsed.role || (parsed.exp && parsed.exp < Math.floor(Date.now() / 1000))) {
+      return null;
+    }
+    if (parsed.role === 'merchant' && !parsed.tenantId) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function isAdminRole(role?: string): boolean {
+  return role === 'super_admin' || role === 'admin';
+}
 
 function verifyPassword(password: string, storedHash?: string | null): boolean {
   if (!storedHash) return false;
@@ -241,8 +307,21 @@ router.get('/health', async (_req: Request, res: Response) => {
   });
 });
 
-// GET & POST /api/credentials
-router.get('/credentials', (_req: Request, res: Response) => {
+// GET /api/auth/me - Validate active signed session token
+router.get('/auth/me', (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Invalid or expired session token' });
+  }
+  return res.status(200).json({ authenticated: true, user: auth });
+});
+
+// GET & POST /api/credentials (Super Admin only)
+router.get('/credentials', (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth || !isAdminRole(auth.role)) {
+    return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
+  }
   return res.status(200).json({
     issuerId: MASTER_ISSUER_ID,
     serviceAccountEmail: SERVICE_ACCOUNT_EMAIL,
@@ -251,6 +330,10 @@ router.get('/credentials', (_req: Request, res: Response) => {
 });
 
 router.post('/credentials', (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth || !isAdminRole(auth.role)) {
+    return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
+  }
   const { issuerId, serviceAccountEmail, privateKey } = req.body || {};
   if (issuerId) MASTER_ISSUER_ID = String(issuerId).trim();
   if (serviceAccountEmail) SERVICE_ACCOUNT_EMAIL = String(serviceAccountEmail).trim();
@@ -264,26 +347,46 @@ router.post('/credentials', (req: Request, res: Response) => {
   });
 });
 
-// GET /api/stats
-router.get('/stats', async (_req: Request, res: Response) => {
+// GET /api/stats (Tenant-scoped for merchants; global or ?slug= for super admin)
+router.get('/stats', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   await ensureMigration();
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
   try {
-    const tenantRows = await sql`SELECT COUNT(*)::int as count FROM tenants;`;
-    const memberRows = await sql`SELECT COUNT(*)::int as count FROM members;`;
-    const activeTenants = tenantRows[0]?.count || 0;
-    const totalPasses = memberRows[0]?.count || 0;
+    if (isAdminRole(auth.role)) {
+      const tenantRows = await sql`SELECT COUNT(*)::int as count FROM tenants;`;
+      const memberRows = await sql`SELECT COUNT(*)::int as count FROM members;`;
+      const activeTenants = tenantRows[0]?.count || 0;
+      const totalPasses = memberRows[0]?.count || 0;
+      return res.status(200).json({
+        activeTenants,
+        totalPasses,
+        todayRevenue: totalPasses * 35.5,
+        redemptionRate: totalPasses > 0 ? '28.4%' : '0%',
+        avgCheck: 48.2,
+        pointsLiability: totalPasses * 100,
+      });
+    }
 
+    const memberRows = await sql`
+      SELECT COUNT(*)::int as count, COALESCE(SUM(points)::int, 0) as total_points
+      FROM members WHERE tenant_id = ${auth.tenantId};
+    `;
+    const totalPasses = Number(memberRows[0]?.count || 0);
+    const totalPoints = Number(memberRows[0]?.total_points || 0);
     return res.status(200).json({
-      activeTenants,
+      activeTenants: 1,
       totalPasses,
       todayRevenue: totalPasses * 35.5,
       redemptionRate: totalPasses > 0 ? '28.4%' : '0%',
       avgCheck: 48.2,
-      pointsLiability: totalPasses * 100,
+      pointsLiability: totalPoints,
     });
   } catch (err) {
     console.error('[Neon Postgres API] GET /api/stats error:', err);
@@ -301,7 +404,7 @@ router.post('/login', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  // 1. FIRST check Super Admin credentials via environment variables (do NOT query tenants for admin)
+  // 1. FIRST check Super Admin credentials via environment variables
   const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
   const adminPasswordHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
 
@@ -313,6 +416,10 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!isAdminValid) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+    const token = signAuthToken({
+      role: 'super_admin',
+      email: superAdminEmail,
+    });
     return res.status(200).json({
       success: true,
       role: 'super_admin',
@@ -321,7 +428,7 @@ router.post('/login', async (req: Request, res: Response) => {
         email: superAdminEmail,
         role: 'super_admin',
       },
-      token: `session_super_admin_${Date.now()}`,
+      token,
       message: 'Super Admin login successful',
     });
   }
@@ -389,6 +496,13 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
+    const token = signAuthToken({
+      role: 'merchant',
+      tenantId: tenant.id,
+      tenantSlug: tenant.slug,
+      email: tenant.owner_email,
+    });
+
     return res.status(200).json({
       success: true,
       role: 'merchant',
@@ -410,7 +524,7 @@ router.post('/login', async (req: Request, res: Response) => {
         email: tenant.owner_email,
         role: 'merchant',
       },
-      token: `tok_${tenant.id}_${Date.now()}`,
+      token,
       message: 'Login successful',
     });
   } catch (err: any) {
@@ -469,13 +583,15 @@ async function registerOrProvisionTenant(req: Request, res: Response) {
     });
   }
 
+  const auth = verifyAuthToken(req);
+  const finalStatus = isAdminRole(auth?.role) && status ? status : 'Pending Approval';
+
   const tenantId = `t-${Date.now()}`;
   const classId = `${MASTER_ISSUER_ID}.tenant_${tenantId}_${archetype || 'loyalty'}_class`;
   const logo = logoUrl || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop';
   const color = brandColor || '#ff5722';
   const finalOwnerName = (ownerName || owner_name || '').trim() || 'Store Manager';
   const passLimit = rawPlan === 'scale' ? 50000 : rawPlan === 'starter' ? 500 : 5000;
-  const finalStatus = status || 'Pending Approval';
 
   let insertedRow: any = null;
 
@@ -558,8 +674,12 @@ router.post('/register', registerOrProvisionTenant);
 router.post('/provision', registerOrProvisionTenant);
 router.post('/tenants', registerOrProvisionTenant);
 
-// GET /api/tenants
+// GET /api/tenants - Strictly returns only own tenant for merchants, full list for Super Admin
 router.get('/tenants', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   await ensureMigration();
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
@@ -567,41 +687,54 @@ router.get('/tenants', async (req: Request, res: Response) => {
 
   const statusParam = typeof req.query?.status === 'string' ? req.query.status.trim().toLowerCase() : '';
   try {
-    const rows =
-      statusParam === 'pending' || statusParam === 'pending approval'
-        ? await sql`
-            SELECT 
-              t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-              t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
-              COUNT(m.id)::int as pass_count
-            FROM tenants t
-            LEFT JOIN members m ON m.tenant_id = t.id
-            WHERE LOWER(COALESCE(t.status, '')) IN ('pending', 'pending approval')
-            GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
-            ORDER BY t.created_at DESC NULLS LAST, t.id DESC;
-          `
-        : statusParam
-        ? await sql`
-            SELECT 
-              t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-              t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
-              COUNT(m.id)::int as pass_count
-            FROM tenants t
-            LEFT JOIN members m ON m.tenant_id = t.id
-            WHERE LOWER(COALESCE(t.status, '')) = ${statusParam}
-            GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
-            ORDER BY t.id;
-          `
-        : await sql`
-            SELECT 
-              t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-              t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
-              COUNT(m.id)::int as pass_count
-            FROM tenants t
-            LEFT JOIN members m ON m.tenant_id = t.id
-            GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
-            ORDER BY t.id;
-          `;
+    let rows: any[];
+    if (!isAdminRole(auth.role)) {
+      rows = await sql`
+        SELECT 
+          t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          COUNT(m.id)::int as pass_count
+        FROM tenants t
+        LEFT JOIN members m ON m.tenant_id = t.id
+        WHERE t.id = ${auth.tenantId}
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at;
+      `;
+    } else if (statusParam === 'pending' || statusParam === 'pending approval') {
+      rows = await sql`
+        SELECT 
+          t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          COUNT(m.id)::int as pass_count
+        FROM tenants t
+        LEFT JOIN members m ON m.tenant_id = t.id
+        WHERE LOWER(COALESCE(t.status, '')) IN ('pending', 'pending approval')
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+        ORDER BY t.created_at DESC NULLS LAST, t.id DESC;
+      `;
+    } else if (statusParam) {
+      rows = await sql`
+        SELECT 
+          t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          COUNT(m.id)::int as pass_count
+        FROM tenants t
+        LEFT JOIN members m ON m.tenant_id = t.id
+        WHERE LOWER(COALESCE(t.status, '')) = ${statusParam}
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+        ORDER BY t.id;
+      `;
+    } else {
+      rows = await sql`
+        SELECT 
+          t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          COUNT(m.id)::int as pass_count
+        FROM tenants t
+        LEFT JOIN members m ON m.tenant_id = t.id
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+        ORDER BY t.id;
+      `;
+    }
 
     const mapped = rows.map((r: any) => ({
       id: r.id,
@@ -627,20 +760,65 @@ router.get('/tenants', async (req: Request, res: Response) => {
   }
 });
 
-// PATCH / PUT /api/tenants (body target)
-async function updateTenantByTarget(target: string, body: any, res: Response) {
+// Shared tenant update helper with strict auth check
+async function updateTenantScoped(auth: AuthContext, requestedTarget: string, body: any, res: Response) {
   await ensureMigration();
-  const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail, password } = body || {};
-  const computedLimit =
-    passLimit || pass_limit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null);
-  const rawPwd = password ? String(password).trim() : '';
-
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
+  const isSuper = isAdminRole(auth.role);
+  if (!isSuper && requestedTarget !== auth.tenantId && requestedTarget !== auth.tenantSlug) {
+    return res.status(403).json({ error: 'Forbidden: cannot modify another store tenant' });
+  }
+
+  const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail, password } = body || {};
+  const safeStatus = isSuper ? status || null : null;
+  const safePlan = isSuper ? plan || null : null;
+  const computedLimit = isSuper
+    ? passLimit || pass_limit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null)
+    : null;
+  const rawPwd = password ? String(password).trim() : '';
+
+  if (rawPwd && rawPwd.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
   try {
-    const rows = rawPwd
+    const rows = isSuper
+      ? rawPwd
+        ? await sql`
+            UPDATE tenants
+            SET 
+              name = COALESCE(${name || null}, name),
+              logo = COALESCE(${logoUrl || null}, logo),
+              color = COALESCE(${brandColor || null}, color),
+              archetype = COALESCE(${archetype || null}, archetype),
+              status = COALESCE(${safeStatus}, status),
+              plan = COALESCE(${safePlan}, plan),
+              pass_limit = COALESCE(${computedLimit}, pass_limit),
+              owner_name = COALESCE(${ownerName || null}, owner_name),
+              owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email),
+              password_hash = crypt(${rawPwd}, gen_salt('bf'))
+            WHERE slug = ${requestedTarget} OR id = ${requestedTarget}
+            RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
+          `
+        : await sql`
+            UPDATE tenants
+            SET 
+              name = COALESCE(${name || null}, name),
+              logo = COALESCE(${logoUrl || null}, logo),
+              color = COALESCE(${brandColor || null}, color),
+              archetype = COALESCE(${archetype || null}, archetype),
+              status = COALESCE(${safeStatus}, status),
+              plan = COALESCE(${safePlan}, plan),
+              pass_limit = COALESCE(${computedLimit}, pass_limit),
+              owner_name = COALESCE(${ownerName || null}, owner_name),
+              owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email)
+            WHERE slug = ${requestedTarget} OR id = ${requestedTarget}
+            RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
+          `
+      : rawPwd
       ? await sql`
           UPDATE tenants
           SET 
@@ -648,13 +826,10 @@ async function updateTenantByTarget(target: string, body: any, res: Response) {
             logo = COALESCE(${logoUrl || null}, logo),
             color = COALESCE(${brandColor || null}, color),
             archetype = COALESCE(${archetype || null}, archetype),
-            status = COALESCE(${status || null}, status),
-            plan = COALESCE(${plan || null}, plan),
-            pass_limit = COALESCE(${computedLimit || null}, pass_limit),
             owner_name = COALESCE(${ownerName || null}, owner_name),
             owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email),
             password_hash = crypt(${rawPwd}, gen_salt('bf'))
-          WHERE slug = ${target} OR id = ${target} OR slug = ${target.replace(/-bistro$/, '')}
+          WHERE id = ${auth.tenantId}
           RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
         `
       : await sql`
@@ -664,12 +839,9 @@ async function updateTenantByTarget(target: string, body: any, res: Response) {
             logo = COALESCE(${logoUrl || null}, logo),
             color = COALESCE(${brandColor || null}, color),
             archetype = COALESCE(${archetype || null}, archetype),
-            status = COALESCE(${status || null}, status),
-            plan = COALESCE(${plan || null}, plan),
-            pass_limit = COALESCE(${computedLimit || null}, pass_limit),
             owner_name = COALESCE(${ownerName || null}, owner_name),
             owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email)
-          WHERE slug = ${target} OR id = ${target} OR slug = ${target.replace(/-bistro$/, '')}
+          WHERE id = ${auth.tenantId}
           RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
         `;
 
@@ -691,7 +863,7 @@ async function updateTenantByTarget(target: string, body: any, res: Response) {
           ownerName: r.owner_name,
           ownerEmail: r.owner_email,
         },
-        message: 'Tenant settings and status updated in Neon Postgres',
+        message: 'Tenant settings updated in Neon Postgres',
       });
     }
     return res.status(404).json({ error: 'Tenant not found' });
@@ -704,45 +876,64 @@ async function updateTenantByTarget(target: string, body: any, res: Response) {
   }
 }
 
-router.patch('/tenants', async (req: Request, res: Response) => {
-  const target = req.body?.slug || req.body?.id || req.query?.slug || req.query?.id;
-  if (!target) {
-    return res.status(400).json({ error: 'Tenant slug or id is required for update' });
-  }
-  return updateTenantByTarget(String(target), req.body, res);
+router.patch('/tenants', (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  const target = req.body?.slug || req.body?.id || req.query?.slug || req.query?.id || auth.tenantId;
+  if (!target) return res.status(400).json({ error: 'Tenant slug or id is required for update' });
+  return updateTenantScoped(auth, String(target), req.body, res);
 });
 
-router.put('/tenants', async (req: Request, res: Response) => {
-  const target = req.body?.slug || req.body?.id || req.query?.slug || req.query?.id;
-  if (!target) {
-    return res.status(400).json({ error: 'Tenant slug or id is required for update' });
-  }
-  return updateTenantByTarget(String(target), req.body, res);
+router.put('/tenants', (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  const target = req.body?.slug || req.body?.id || req.query?.slug || req.query?.id || auth.tenantId;
+  if (!target) return res.status(400).json({ error: 'Tenant slug or id is required for update' });
+  return updateTenantScoped(auth, String(target), req.body, res);
 });
 
 // GET /api/tenants/:slug
 router.get('/tenants/:slug', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   await ensureMigration();
   const { slug } = req.params;
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
+  if (!isAdminRole(auth.role) && slug !== auth.tenantSlug && slug !== auth.tenantId) {
+    return res.status(403).json({ error: 'Forbidden: cross-tenant access denied' });
+  }
+
   try {
-    const rows = await sql`
-      SELECT 
-        t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-        t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
-        COUNT(m.id)::int as pass_count,
-        COALESCE(SUM(m.points)::int, 0) as total_points
-      FROM tenants t
-      LEFT JOIN members m ON m.tenant_id = t.id
-      WHERE t.slug = ${slug} 
-         OR t.id = ${slug} 
-         OR t.slug = ${slug.replace(/-bistro$/, '')}
-      GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
-      LIMIT 1;
-    `;
+    const rows = !isAdminRole(auth.role)
+      ? await sql`
+          SELECT 
+            t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+            t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+            COUNT(m.id)::int as pass_count,
+            COALESCE(SUM(m.points)::int, 0) as total_points
+          FROM tenants t
+          LEFT JOIN members m ON m.tenant_id = t.id
+          WHERE t.id = ${auth.tenantId}
+          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+          LIMIT 1;
+        `
+      : await sql`
+          SELECT 
+            t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
+            t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+            COUNT(m.id)::int as pass_count,
+            COALESCE(SUM(m.points)::int, 0) as total_points
+          FROM tenants t
+          LEFT JOIN members m ON m.tenant_id = t.id
+          WHERE t.slug = ${slug} OR t.id = ${slug}
+          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+          LIMIT 1;
+        `;
 
     if (rows.length > 0) {
       const r = rows[0];
@@ -772,17 +963,24 @@ router.get('/tenants/:slug', async (req: Request, res: Response) => {
   }
 });
 
-// PATCH / PUT /api/tenants/:slug
-router.patch('/tenants/:slug', async (req: Request, res: Response) => {
-  return updateTenantByTarget(req.params.slug, req.body, res);
+router.patch('/tenants/:slug', (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  return updateTenantScoped(auth, req.params.slug, req.body, res);
 });
 
-router.put('/tenants/:slug', async (req: Request, res: Response) => {
-  return updateTenantByTarget(req.params.slug, req.body, res);
+router.put('/tenants/:slug', (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  return updateTenantScoped(auth, req.params.slug, req.body, res);
 });
 
-// DELETE /api/tenants/:slug
+// DELETE /api/tenants/:slug (Super Admin only)
 router.delete('/tenants/:slug', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth || !isAdminRole(auth.role)) {
+    return res.status(auth ? 403 : 401).json({ error: 'Super Admin privileges required' });
+  }
   await ensureMigration();
   const { slug } = req.params;
   if (!sql) {
@@ -791,12 +989,12 @@ router.delete('/tenants/:slug', async (req: Request, res: Response) => {
   try {
     await sql`
       DELETE FROM members WHERE tenant_id IN (
-        SELECT id FROM tenants WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+        SELECT id FROM tenants WHERE slug = ${slug} OR id = ${slug}
       );
     `;
     const deletedRows = await sql`
       DELETE FROM tenants 
-      WHERE slug = ${slug} OR id = ${slug} OR slug = ${slug.replace(/-bistro$/, '')}
+      WHERE slug = ${slug} OR id = ${slug}
       RETURNING id, slug, name;
     `;
     if (deletedRows.length > 0) {
@@ -813,28 +1011,157 @@ router.delete('/tenants/:slug', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/tenants/:slug/members
-router.get('/tenants/:slug/members', async (req: Request, res: Response) => {
+// Helper: Resolve strictly scoped member list query
+async function fetchScopedMembers(auth: AuthContext, requestedSlug?: string) {
+  if (!sql) return null;
+
+  if (!isAdminRole(auth.role)) {
+    // Merchant MUST strictly only see rows with tenant_id = auth.tenantId (ignores any param)
+    return sql`
+      SELECT 
+        m.id, m.tenant_id, m.name as customer_name, m.phone, m.email,
+        m.member_id, m.points, m.balance_cents, m.google_object_id,
+        t.name as store_name, t.slug as store_slug, t.color as brand_color, t.logo as logo_url, t.class_id
+      FROM members m
+      JOIN tenants t ON m.tenant_id = t.id
+      WHERE m.tenant_id = ${auth.tenantId}
+      ORDER BY m.id DESC;
+    `;
+  }
+
+  if (requestedSlug) {
+    return sql`
+      SELECT 
+        m.id, m.tenant_id, m.name as customer_name, m.phone, m.email,
+        m.member_id, m.points, m.balance_cents, m.google_object_id,
+        t.name as store_name, t.slug as store_slug, t.color as brand_color, t.logo as logo_url, t.class_id
+      FROM members m
+      JOIN tenants t ON m.tenant_id = t.id
+      WHERE t.slug = ${requestedSlug} OR t.id = ${requestedSlug}
+      ORDER BY m.id DESC;
+    `;
+  }
+
+  return sql`
+    SELECT 
+      m.id, m.tenant_id, m.name as customer_name, m.phone, m.email,
+      m.member_id, m.points, m.balance_cents, m.google_object_id,
+      t.name as store_name, t.slug as store_slug, t.color as brand_color, t.logo as logo_url, t.class_id
+    FROM members m
+    JOIN tenants t ON m.tenant_id = t.id
+    ORDER BY m.id DESC;
+  `;
+}
+
+// GET /api/members - Strictly filters WHERE tenant_id = current logged-in tenant's tenant_id (from auth token)
+router.get('/members', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   await ensureMigration();
-  const { slug } = req.params;
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
+  // Query param is IGNORED for merchants; only super_admin may scope to a selected store slug
+  const adminSlug = isAdminRole(auth.role) && typeof req.query?.slug === 'string' ? req.query.slug.trim() : undefined;
+
   try {
-    const rows = await sql`
-      SELECT 
-        m.id, m.tenant_id, m.name as customer_name, m.phone, m.email,
-        m.member_id, m.points, m.balance_cents, m.google_object_id,
-        t.name as store_name, t.color as brand_color, t.logo as logo_url, t.class_id
-      FROM members m
-      JOIN tenants t ON m.tenant_id = t.id
-      WHERE t.slug = ${slug} 
-         OR t.id = ${slug} 
-         OR t.slug = ${slug.replace(/-bistro$/, '')}
-         OR (${slug.includes('banlis')} AND (t.slug LIKE '%banlis%' OR t.id LIKE '%banlis%'))
-      ORDER BY m.id DESC;
-    `;
+    const rows = await fetchScopedMembers(auth, adminSlug);
+    return res.status(200).json(rows || []);
+  } catch (err) {
+    console.error('[Neon Postgres API] GET /api/members error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
+});
+
+// GET /api/members/:id - Strictly enforces tenant_id = auth tenant
+router.get('/members/:id', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const rawId = req.params.id;
+  try {
+    const rows = !isAdminRole(auth.role)
+      ? await sql`
+          SELECT 
+            m.id, m.tenant_id, m.name as customer_name, m.phone, m.email,
+            m.member_id, m.points, m.balance_cents, m.google_object_id,
+            t.name as store_name, t.slug as store_slug, t.color as brand_color, t.logo as logo_url, t.class_id
+          FROM members m
+          JOIN tenants t ON m.tenant_id = t.id
+          WHERE (m.id = ${rawId} OR m.member_id = ${rawId} OR m.google_object_id = ${rawId})
+            AND m.tenant_id = ${auth.tenantId}
+          LIMIT 1;
+        `
+      : await sql`
+          SELECT 
+            m.id, m.tenant_id, m.name as customer_name, m.phone, m.email,
+            m.member_id, m.points, m.balance_cents, m.google_object_id,
+            t.name as store_name, t.slug as store_slug, t.color as brand_color, t.logo as logo_url, t.class_id
+          FROM members m
+          JOIN tenants t ON m.tenant_id = t.id
+          WHERE (m.id = ${rawId} OR m.member_id = ${rawId} OR m.google_object_id = ${rawId})
+          LIMIT 1;
+        `;
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    return res.status(200).json(rows[0]);
+  } catch (err) {
+    console.error('[Neon Postgres API] GET /api/members/:id error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
+});
+
+// GET /api/passes - Same strict tenant isolation
+router.get('/passes', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const adminSlug = isAdminRole(auth.role) && typeof req.query?.slug === 'string' ? req.query.slug.trim() : undefined;
+
+  try {
+    const rows = await fetchScopedMembers(auth, adminSlug);
+    return res.status(200).json(rows || []);
+  } catch (err) {
+    console.error('[Neon Postgres API] GET /api/passes error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
+});
+
+// GET /api/tenants/:slug/members - Strictly enforces tenant_id (no banlis fallback)
+router.get('/tenants/:slug/members', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const { slug } = req.params;
+  if (!isAdminRole(auth.role) && slug !== auth.tenantSlug && slug !== auth.tenantId) {
+    return res.status(403).json({ error: 'Forbidden: cross-tenant access denied' });
+  }
+
+  try {
+    const rows = await fetchScopedMembers(auth, slug);
     return res.status(200).json(rows || []);
   } catch (err) {
     console.error('[Neon Postgres API] GET /api/tenants/:slug/members error:', err);
@@ -842,51 +1169,14 @@ router.get('/tenants/:slug/members', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/tenants/:slug/enroll
-router.post('/tenants/:slug/enroll', async (req: Request, res: Response) => {
-  await ensureMigration();
-  const { slug } = req.params;
+// Shared member enrollment handler (for POST /api/members and POST /api/tenants/:slug/enroll)
+async function enrollMemberForTenant(tenant: any, req: Request, res: Response) {
   const { name, email, phone } = req.body || {};
-
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'Customer name is required' });
   }
-
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
-  }
-
-  let tenant: any = null;
-  try {
-    const rows = await sql`
-      SELECT id, slug, name, logo, color, archetype, class_id, issuer_id 
-      FROM tenants 
-      WHERE slug = ${slug} 
-         OR id = ${slug} 
-         OR slug = ${slug.replace(/-bistro$/, '')}
-         OR slug = 'banlis' 
-         OR slug = 'banlis-bistro'
-      LIMIT 1;
-    `;
-    if (rows.length > 0) {
-      tenant = rows[0];
-    } else {
-      const fallbackRows = await sql`
-        SELECT id, slug, name, logo, color, archetype, class_id, issuer_id 
-        FROM tenants 
-        LIMIT 1;
-      `;
-      if (fallbackRows.length > 0) {
-        tenant = fallbackRows[0];
-      }
-    }
-  } catch (err) {
-    console.error('[Neon Postgres API] Find tenant error:', err);
-    return res.status(500).json({ error: 'Database connection failed' });
-  }
-
-  if (!tenant) {
-    return res.status(404).json({ error: `Tenant not found for slug=${slug}` });
   }
 
   const memberIdCode = `PL-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1013,81 +1303,153 @@ router.post('/tenants/:slug/enroll', async (req: Request, res: Response) => {
       walletUrl: saveToWalletUrl,
       qr: memberIdCode,
       qrCodeData: `PASS-LOVAL-NFC:${objectId}`,
+      tenant: {
+        id: tenant.id,
+        slug: tenant.slug,
+        name: tenant.name,
+        brandColor: tenant.color,
+        logoUrl: tenant.logo,
+      },
     });
   } catch (err: any) {
     console.error('[Enrollment JWT Error]:', err);
     return res.status(500).json({ error: err.message || 'Failed to sign Google Wallet pass' });
   }
+}
+
+// POST /api/members - Enforces tenant_id from auth token
+router.post('/members', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const targetRef = isAdminRole(auth.role)
+    ? req.body?.tenantId || req.body?.tenant_id || req.body?.tenantSlug || req.body?.slug
+    : auth.tenantId;
+
+  if (!targetRef) {
+    return res.status(400).json({ error: 'Target tenant is required' });
+  }
+
+  try {
+    const rows = isAdminRole(auth.role)
+      ? await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE id = ${targetRef} OR slug = ${targetRef} LIMIT 1;`
+      : await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;`;
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    return enrollMemberForTenant(rows[0], req, res);
+  } catch (err) {
+    console.error('[Neon Postgres API] POST /api/members error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
+});
+
+// POST /api/tenants/:slug/enroll - Strict tenant lookup (NO banlis fallback, NO LIMIT 1 fallback)
+router.post('/tenants/:slug/enroll', async (req: Request, res: Response) => {
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const auth = verifyAuthToken(req);
+  const { slug } = req.params;
+
+  if (auth && !isAdminRole(auth.role) && slug !== auth.tenantSlug && slug !== auth.tenantId) {
+    return res.status(403).json({ error: 'Forbidden: cannot enroll member into another tenant' });
+  }
+
+  try {
+    const rows =
+      auth && !isAdminRole(auth.role)
+        ? await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;`
+        : await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE slug = ${slug} OR id = ${slug} LIMIT 1;`;
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: `Tenant not found for slug=${slug}` });
+    }
+    return enrollMemberForTenant(rows[0], req, res);
+  } catch (err) {
+    console.error('[Neon Postgres API] POST /api/tenants/:slug/enroll error:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
 });
 
 // GET /api/tenants/:id/billing
 router.get('/tenants/:id/billing', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   await ensureMigration();
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
-  let storeName = 'Banlis Bistro & Dining';
-  let passCount = 0;
+  const targetId = req.params.id;
+  if (!isAdminRole(auth.role) && targetId !== auth.tenantId && targetId !== auth.tenantSlug) {
+    return res.status(403).json({ error: 'Forbidden: cross-tenant access denied' });
+  }
 
   try {
-    const rows = await sql`
-      SELECT t.name, COUNT(m.id)::int as pass_count
-      FROM tenants t
-      LEFT JOIN members m ON m.tenant_id = t.id
-      WHERE t.id = ${req.params.id} OR t.slug = ${req.params.id}
-      GROUP BY t.id, t.name LIMIT 1;
-    `;
-    if (rows.length > 0) {
-      storeName = rows[0].name;
-      passCount = Number(rows[0].pass_count || 0);
+    const rows = !isAdminRole(auth.role)
+      ? await sql`
+          SELECT t.id, t.slug, t.name, t.plan, t.pass_limit, COUNT(m.id)::int as pass_count
+          FROM tenants t
+          LEFT JOIN members m ON m.tenant_id = t.id
+          WHERE t.id = ${auth.tenantId}
+          GROUP BY t.id, t.slug, t.name, t.plan, t.pass_limit LIMIT 1;
+        `
+      : await sql`
+          SELECT t.id, t.slug, t.name, t.plan, t.pass_limit, COUNT(m.id)::int as pass_count
+          FROM tenants t
+          LEFT JOIN members m ON m.tenant_id = t.id
+          WHERE t.id = ${targetId} OR t.slug = ${targetId}
+          GROUP BY t.id, t.slug, t.name, t.plan, t.pass_limit LIMIT 1;
+        `;
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
     }
+
+    const r = rows[0];
+    const planKey = (r.plan || 'growth').toLowerCase() as 'starter' | 'growth' | 'scale';
+    const planCosts = { starter: 49, growth: 149, scale: 399 };
+    const passCount = Number(r.pass_count || 0);
+    const passLimit = Number(r.pass_limit || (planKey === 'scale' ? 50000 : planKey === 'starter' ? 500 : 5000));
+
+    return res.status(200).json({
+      tenantId: r.id,
+      slug: r.slug,
+      storeName: r.name,
+      plan: planKey,
+      monthlyCost: planCosts[planKey] || 149,
+      passUsage: {
+        current: passCount,
+        limit: passLimit,
+        percentage: passLimit > 0 ? Math.min(100, Math.round((passCount / passLimit) * 1000) / 10) : 0,
+      },
+      billingCycleEnd: '2026-12-01T00:00:00Z',
+      masterIssuerStatus: `Active (Issuer ID: ${MASTER_ISSUER_ID})`,
+    });
   } catch (err) {
     console.error('[Neon Postgres API] GET billing error:', err);
     return res.status(500).json({ error: 'Database connection failed' });
   }
-
-  return res.status(200).json({
-    tenantId: req.params.id,
-    storeName,
-    plan: 'growth',
-    monthlyCost: 149,
-    passUsage: {
-      current: passCount,
-      limit: 5000,
-      percentage: Math.round((passCount / 5000) * 100),
-    },
-    billingCycleEnd: '2026-12-01T00:00:00Z',
-    masterIssuerStatus: `Active (Issuer ID: ${MASTER_ISSUER_ID})`,
-  });
 });
 
-// GET /api/passes
-router.get('/passes', async (_req: Request, res: Response) => {
-  await ensureMigration();
-  if (!sql) {
-    return res.status(500).json({ error: 'Database not configured' });
+// Shared points adjustment logic - STRICTLY enforces tenant_id = auth.tenantId for merchants
+async function handleMemberPointsUpdate(req: Request, rawId: string, body: any, res: Response) {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
   }
-
-  try {
-    const rows = await sql`
-      SELECT 
-        m.id, m.tenant_id, m.name as customer_name, m.phone, m.email,
-        m.member_id, m.points, m.balance_cents, m.google_object_id,
-        t.name as store_name, t.color as brand_color, t.logo as logo_url, t.class_id
-      FROM members m
-      JOIN tenants t ON m.tenant_id = t.id
-      ORDER BY m.id DESC;
-    `;
-    return res.status(200).json(rows || []);
-  } catch (err) {
-    console.error('[Neon Postgres API] GET /api/passes error:', err);
-    return res.status(500).json({ error: 'Database connection failed' });
-  }
-});
-
-// Shared points adjustment logic for /api/members/:id/points and /api/passes/:objectId/points
-async function handleMemberPointsUpdate(rawId: string, body: any, res: Response) {
   await ensureMigration();
   if (!rawId) {
     return res.status(400).json({ error: 'Member ID parameter is required' });
@@ -1101,14 +1463,21 @@ async function handleMemberPointsUpdate(rawId: string, body: any, res: Response)
   const reason = body?.reason || 'Points Adjustment';
 
   try {
-    const rows = await sql`
-      SELECT * FROM members 
-      WHERE id = ${rawId} OR google_object_id = ${rawId} OR member_id = ${rawId}
-      LIMIT 1;
-    `;
+    const rows = !isAdminRole(auth.role)
+      ? await sql`
+          SELECT * FROM members 
+          WHERE (id = ${rawId} OR google_object_id = ${rawId} OR member_id = ${rawId})
+            AND tenant_id = ${auth.tenantId}
+          LIMIT 1;
+        `
+      : await sql`
+          SELECT * FROM members 
+          WHERE id = ${rawId} OR google_object_id = ${rawId} OR member_id = ${rawId}
+          LIMIT 1;
+        `;
 
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Member pass not found' });
+      return res.status(404).json({ error: 'Member pass not found for active tenant' });
     }
 
     const currentMember = rows[0];
@@ -1127,7 +1496,7 @@ async function handleMemberPointsUpdate(rawId: string, body: any, res: Response)
     const updatedRows = await sql`
       UPDATE members 
       SET points = ${newPoints} 
-      WHERE id = ${currentMember.id}
+      WHERE id = ${currentMember.id} AND tenant_id = ${currentMember.tenant_id}
       RETURNING *;
     `;
     const member = updatedRows[0] || { ...currentMember, points: newPoints };
@@ -1173,19 +1542,24 @@ async function handleMemberPointsUpdate(rawId: string, body: any, res: Response)
 }
 
 router.post('/members/:id/points', (req: Request, res: Response) => {
-  return handleMemberPointsUpdate(req.params.id, req.body, res);
+  return handleMemberPointsUpdate(req, req.params.id, req.body, res);
 });
 
 router.patch('/members/:id/points', (req: Request, res: Response) => {
-  return handleMemberPointsUpdate(req.params.id, req.body, res);
+  return handleMemberPointsUpdate(req, req.params.id, req.body, res);
 });
 
 router.patch('/passes/:objectId/points', (req: Request, res: Response) => {
-  return handleMemberPointsUpdate(req.params.objectId, req.body, res);
+  return handleMemberPointsUpdate(req, req.params.objectId, req.body, res);
 });
 
-// GET & PATCH /api/admin/profile
-router.get('/admin/profile', async (_req: Request, res: Response) => {
+// GET & PATCH /api/admin/profile (Super Admin only)
+router.get('/admin/profile', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth || !isAdminRole(auth.role)) {
+    return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
+  }
+
   const email = (process.env.SUPER_ADMIN_EMAIL || '').trim();
   if (sql) {
     try {
@@ -1230,6 +1604,11 @@ router.get('/admin/profile', async (_req: Request, res: Response) => {
 });
 
 async function handleAdminProfileUpdate(req: Request, res: Response) {
+  const auth = verifyAuthToken(req);
+  if (!auth || !isAdminRole(auth.role)) {
+    return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
+  }
+
   const {
     displayName,
     organization,
@@ -1321,7 +1700,6 @@ router.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
-// Mount under both /api and / so Vercel rewrites work regardless of path forwarding
 app.use('/api', router);
 app.use('/', router);
 
