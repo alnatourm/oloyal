@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
-import { ensureMigration, hashPassword, verifyPassword } from './api/_db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,6 +49,70 @@ G3DaKXXecVI9vqh/qUibNyM=
 // Neon Postgres Client
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
+
+function hashPassword(password: string): string {
+  if (!password) return '';
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash?: string | null): boolean {
+  if (!storedHash) return false;
+  try {
+    if (!storedHash.includes(':')) {
+      const sha = crypto.createHash('sha256').update(password).digest('hex');
+      return sha === storedHash || password === storedHash;
+    }
+    const [salt, hash] = storedHash.split(':');
+    const checkHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+    const hashBuf = Buffer.from(hash, 'hex');
+    const checkBuf = Buffer.from(checkHash, 'hex');
+    if (hashBuf.length !== checkBuf.length) return false;
+    return crypto.timingSafeEqual(hashBuf, checkBuf);
+  } catch {
+    return false;
+  }
+}
+
+let migrationPromise: Promise<void> | null = null;
+
+async function ensureMigration(): Promise<void> {
+  if (!sql) return;
+  if (!migrationPromise) {
+    migrationPromise = (async () => {
+      try {
+        try {
+          await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto;`;
+        } catch (extErr: any) {
+          console.warn('[Migration] pgcrypto extension notice:', extErr?.message || extErr);
+        }
+        await sql`
+          ALTER TABLE tenants 
+          ADD COLUMN IF NOT EXISTS owner_name TEXT, 
+          ADD COLUMN IF NOT EXISTS owner_email TEXT UNIQUE, 
+          ADD COLUMN IF NOT EXISTS password_hash TEXT, 
+          ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Pending Approval',
+          ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'growth',
+          ADD COLUMN IF NOT EXISTS pass_limit INT DEFAULT 5000,
+          ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+        `;
+        try {
+          await sql`
+            UPDATE tenants 
+            SET status = 'Active',
+                password_hash = COALESCE(password_hash, crypt('admin123', gen_salt('bf')))
+            WHERE (slug = 'banlis' OR slug = 'banlis-bistro' OR owner_email = 'banlis@oloyal.com')
+              AND (password_hash IS NULL OR password_hash = '');
+          `;
+        } catch {}
+      } catch (err: any) {
+        console.warn('[Migration] Note on combined statement:', err?.message || err);
+      }
+    })();
+  }
+  await migrationPromise;
+}
 
 // Initialize Database Tables in Neon Postgres
 async function initDb() {
@@ -1294,6 +1357,57 @@ app.patch('/api/passes/:objectId/points', async (req: Request, res: Response) =>
     lockScreenPushSent: true,
     updatedAt: new Date().toISOString(),
   });
+});
+
+// POST /api/members/:id/points - Member Points Update (parity with Vercel router)
+app.post('/api/members/:id/points', async (req: Request, res: Response) => {
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+  const rawId = req.params.id;
+  const delta = Number(req.body?.points ?? req.body?.deltaPoints ?? 0);
+  const absolute = typeof req.body?.absolutePoints === 'number' ? req.body.absolutePoints : null;
+  const reason = req.body?.reason || 'Points Adjustment';
+
+  try {
+    const rows = await sql`
+      SELECT * FROM members 
+      WHERE id = ${rawId} OR google_object_id = ${rawId} OR member_id = ${rawId}
+      LIMIT 1;
+    `;
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Member pass not found' });
+    }
+    const currentMember = rows[0];
+    const currentPoints = Number(currentMember.points || 0);
+    const newPoints = absolute !== null ? Math.max(0, absolute) : Math.max(0, currentPoints + delta);
+    const changeAmount = newPoints - currentPoints;
+
+    const updatedRows = await sql`
+      UPDATE members SET points = ${newPoints} WHERE id = ${currentMember.id} RETURNING *;
+    `;
+    const member = updatedRows[0] || { ...currentMember, points: newPoints };
+
+    const txId = `tx-${Date.now()}`;
+    try {
+      await sql`
+        INSERT INTO point_transactions (id, member_id, change_amount, reason)
+        VALUES (${txId}, ${currentMember.id}, ${changeAmount}, ${reason});
+      `;
+    } catch {}
+
+    const finalPoints = Number(member.points || 0);
+    return res.json({
+      success: true,
+      member,
+      newPoints: finalPoints,
+      points: finalPoints,
+      message: 'Points updated and synced with database',
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] POST /api/members/:id/points error:', err);
+    return res.status(500).json({ error: err?.message || 'Database error' });
+  }
 });
 
 // GET /api/tenants/:id/billing - SaaS Billing & Limits
