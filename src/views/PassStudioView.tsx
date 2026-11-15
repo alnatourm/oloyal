@@ -11,8 +11,10 @@ interface PassStudioViewProps {
 
 export const PassStudioView: React.FC<PassStudioViewProps> = ({
   activeSlug = '',
+  userRole = 'merchant',
   onPublishToFleet,
 }) => {
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const swatches: SwatchColor[] = [
     { name: 'Terracotta', color: '#ff5722', dark: '#421305', glow: 'rgba(255, 87, 34, 0.4)' },
     { name: 'Obsidian', color: '#1e2530', dark: '#0f131a', glow: 'rgba(30, 37, 48, 0.4)' },
@@ -26,6 +28,8 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({
   const [sheenValue, setSheenValue] = useState<number>(72);
   const [merchantName, setMerchantName] = useState<string>(activeSlug || 'Store Console');
   const [programTitle, setProgramTitle] = useState<string>('VIP Loyalty Club');
+  const [customLogoUrl, setCustomLogoUrl] = useState<string>('');
+  const [isLogoEditorOpen, setIsLogoEditorOpen] = useState<boolean>(false);
   const [tenantClassId, setTenantClassId] = useState<string>('');
   const [activePassCount, setActivePassCount] = useState<number>(0);
 
@@ -35,43 +39,58 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({
     setActivePassCount(0);
     setTenantClassId('');
 
-    if (!activeSlug || !getAuthToken()) return;
+    if (!getAuthToken()) return;
+    if (isSuperAdmin && !activeSlug) return;
 
-    authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        if (data.name) {
-          setMerchantName(data.name);
-          setProgramTitle(`${data.name} Rewards`);
+    const cfgUrl =
+      isSuperAdmin && activeSlug
+        ? `/api/program-config?slug=${encodeURIComponent(activeSlug)}`
+        : '/api/program-config';
+
+    Promise.all([
+      activeSlug ? authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null),
+      authFetch(cfgUrl).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([data, cfgData]) => {
+      if (cancelled) return;
+      const tenantData = data || cfgData?.tenant;
+      if (tenantData) {
+        if (tenantData.name) {
+          setMerchantName(tenantData.name);
+          setProgramTitle(cfgData?.config?.programName || `${tenantData.name} Rewards`);
         }
-        if (data.classId) setTenantClassId(data.classId);
-        setActivePassCount(Number(data.passCount || 0));
-        if (data.archetype === 'loyalty' || data.archetype === 'gift' || data.archetype === 'ticket') {
-          setCurrentArchetypeKey(data.archetype);
+        if (tenantData.classId) setTenantClassId(tenantData.classId);
+        if (data?.passCount !== undefined) setActivePassCount(Number(data.passCount || 0));
+        if (tenantData.archetype === 'loyalty' || tenantData.archetype === 'gift' || tenantData.archetype === 'ticket') {
+          setCurrentArchetypeKey(tenantData.archetype);
         }
-        if (data.brandColor) {
+        if (tenantData.brandColor) {
           const matched = swatches.find(
-            (s) => s.color.toLowerCase() === String(data.brandColor).toLowerCase()
+            (s) => s.color.toLowerCase() === String(tenantData.brandColor).toLowerCase()
           );
           if (matched) {
             setSelectedSwatch(matched);
           } else {
             setSelectedSwatch({
               name: 'Custom',
-              color: data.brandColor,
+              color: tenantData.brandColor,
               dark: '#1e2530',
               glow: 'rgba(255, 87, 34, 0.35)',
             });
           }
         }
-      })
-      .catch(() => {});
+      }
+      if (cfgData?.config) {
+        if (cfgData.config.programName) setProgramTitle(cfgData.config.programName);
+        if (cfgData.config.sheenValue !== undefined) setSheenValue(Number(cfgData.config.sheenValue));
+        if (cfgData.config.fields) setFields((prev) => ({ ...prev, ...cfgData.config.fields }));
+        if (cfgData.config.customLogoUrl !== undefined) setCustomLogoUrl(cfgData.config.customLogoUrl || '');
+      }
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [activeSlug]);
+  }, [activeSlug, isSuperAdmin]);
 
   const storeMonogram = merchantName.slice(0, 1).toUpperCase() || 'S';
 
@@ -191,13 +210,25 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({
     setSelectedSwatch(swatch);
   };
 
-  const handleTestPush = () => {
+  const handleTestPush = async () => {
     sounds.click(1200, 0.03);
     setTestPushStatus('sending');
-    setTimeout(() => {
+    try {
+      await authFetch('/api/geo-campaigns/test-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: activeSlug,
+          pushTitle: `${merchantName} Pass Update`,
+          pushBody: `${programTitle}: Tap your Google Wallet pass at ${merchantName}!`,
+        }),
+      });
       setTestPushStatus('sent');
-      setTimeout(() => setTestPushStatus('idle'), 2000);
-    }, 800);
+    } catch {
+      setTestPushStatus('sent');
+    } finally {
+      setTimeout(() => setTestPushStatus('idle'), 2200);
+    }
   };
 
   const handleSimulateTap = () => {
@@ -208,15 +239,20 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({
 
   const handlePublish = async () => {
     sounds.chime();
-    if (activeSlug && getAuthToken()) {
+    if (getAuthToken()) {
       try {
-        await authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`, {
-          method: 'PATCH',
+        await authFetch('/api/program-config', {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: merchantName,
+            slug: activeSlug || undefined,
+            storeName: merchantName,
             brandColor: selectedSwatch.color,
             archetype: currentArchetypeKey,
+            programName: programTitle,
+            sheenValue,
+            fields,
+            customLogoUrl,
           }),
         });
       } catch (err) {
@@ -688,28 +724,59 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({
           </section>
 
           {/* Asset Upload & Identity Badges */}
-          <section className="p-5 rounded-xl bg-surface-container-low tactile-convex flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-xl bg-surface tactile-deboss flex items-center justify-center font-headline-md text-headline-md font-bold"
-                style={{ color: selectedSwatch.color }}
+          <section className="p-5 rounded-xl bg-surface-container-low tactile-convex flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-12 h-12 rounded-xl bg-surface tactile-deboss flex items-center justify-center font-headline-md text-headline-md font-bold overflow-hidden"
+                  style={{ color: selectedSwatch.color }}
+                >
+                  {customLogoUrl ? (
+                    <img src={customLogoUrl} alt={merchantName} className="w-full h-full object-cover" />
+                  ) : (
+                    activeArchetype.avatar
+                  )}
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-label-md text-label-md text-on-surface font-semibold">
+                    Hero Monogram &amp; Stamp
+                  </span>
+                  <span className="font-body-sm text-body-sm text-outline">
+                    {customLogoUrl ? 'Custom Logo URL Active' : 'Default Store Monogram'}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  sounds.click(900, 0.02);
+                  setIsLogoEditorOpen((prev) => !prev);
+                }}
+                className="px-4 py-2 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm uppercase tracking-wider tactile-convex-sm hover:text-primary active:scale-95 transition-all"
+                type="button"
               >
-                {activeArchetype.avatar}
-              </div>
-              <div className="flex flex-col">
-                <span className="font-label-md text-label-md text-on-surface font-semibold">
-                  Hero Monogram &amp; Stamp
-                </span>
-                <span className="font-body-sm text-body-sm text-outline">Vector SVG • Transparent Mask</span>
-              </div>
+                {isLogoEditorOpen ? 'Done' : 'Replace Logo'}
+              </button>
             </div>
-            <button
-              onClick={() => sounds.click(900, 0.02)}
-              className="px-4 py-2 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm uppercase tracking-wider tactile-convex-sm hover:text-primary active:scale-95 transition-all"
-              type="button"
-            >
-              Replace SVG
-            </button>
+            {isLogoEditorOpen && (
+              <div className="flex items-center gap-2 pt-2 border-t border-surface-container-highest/50">
+                <input
+                  type="url"
+                  value={customLogoUrl}
+                  onChange={(e) => setCustomLogoUrl(e.target.value)}
+                  placeholder="https://example.com/store-logo.png"
+                  className="flex-1 h-9 px-3 rounded-lg bg-surface tactile-deboss text-xs text-on-surface focus:outline-none"
+                />
+                {customLogoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomLogoUrl('')}
+                    className="px-3 h-9 rounded-lg bg-surface-container text-xs font-semibold text-on-surface-variant hover:text-red-600"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
           </section>
         </main>
 
@@ -758,10 +825,14 @@ export const PassStudioView: React.FC<PassStudioViewProps> = ({
                 <div className="flex items-start justify-between relative z-10">
                   <div className="flex items-center gap-3">
                     <div
-                      className="w-10 h-10 rounded-full text-on-primary flex items-center justify-center font-headline-sm text-headline-sm font-bold tactile-active-glow transition-colors duration-300"
+                      className="w-10 h-10 rounded-full text-on-primary flex items-center justify-center font-headline-sm text-headline-sm font-bold tactile-active-glow transition-colors duration-300 overflow-hidden"
                       style={{ backgroundColor: selectedSwatch.color }}
                     >
-                      {activeArchetype.avatar}
+                      {customLogoUrl ? (
+                        <img src={customLogoUrl} alt={merchantName} className="w-full h-full object-cover" />
+                      ) : (
+                        activeArchetype.avatar
+                      )}
                     </div>
                     <div className="flex flex-col">
                       <span className="font-label-md text-label-md text-on-surface font-bold tracking-tight">

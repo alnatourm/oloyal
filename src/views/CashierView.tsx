@@ -11,26 +11,73 @@ interface CashierMember {
   points: number;
 }
 
+interface CashierTier {
+  id: string;
+  name: string;
+  minPoints: number;
+  multiplier: number;
+}
+
 interface CashierViewProps {
   activeSlug?: string;
   userRole?: 'super_admin' | 'admin' | 'merchant';
+  selectedMemberId?: string;
   openScannerModal: () => void;
+}
+
+const DEFAULT_TIERS: CashierTier[] = [
+  { id: 'silver', name: 'SILVER', minPoints: 0, multiplier: 1.0 },
+  { id: 'gold', name: 'GOLD VIP', minPoints: 1000, multiplier: 1.25 },
+  { id: 'platinum', name: 'PLATINUM', minPoints: 2000, multiplier: 1.5 },
+];
+
+function resolveTier(pts: number, tiers: CashierTier[]): CashierTier {
+  const sorted = [...tiers].sort((a, b) => Number(a.minPoints) - Number(b.minPoints));
+  let matched = sorted[0] || DEFAULT_TIERS[0];
+  for (const t of sorted) {
+    if (pts >= Number(t.minPoints)) matched = t;
+  }
+  return matched;
 }
 
 export const CashierView: React.FC<CashierViewProps> = ({
   activeSlug = '',
   userRole = 'merchant',
+  selectedMemberId,
   openScannerModal,
 }) => {
   const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const [currentTotal, setCurrentTotal] = useState<number>(55.0);
   const [inputBuffer, setInputBuffer] = useState<string>('');
   const [showToast, setShowToast] = useState<boolean>(false);
+  const [isErrorToast, setIsErrorToast] = useState<boolean>(false);
   const [toastSummary, setToastSummary] = useState<string>('Order synced to ledger');
   const [tenderMethod, setTenderMethod] = useState<'nfc' | 'emv' | 'cash'>('nfc');
   const [storeName, setStoreName] = useState<string>(activeSlug || 'Store Terminal');
   const [members, setMembers] = useState<CashierMember[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
+  const [tiers, setTiers] = useState<CashierTier[]>(DEFAULT_TIERS);
+  const [minFloor, setMinFloor] = useState<number>(500);
+  const [earnVelocity, setEarnVelocity] = useState<number>(10);
+  const [perks, setPerks] = useState<LoyaltyPerk[]>([]);
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([
+    {
+      id: '1',
+      name: 'Standard Order Item',
+      subtitle: 'Counter Checkout',
+      qty: 1,
+      price: 35.0,
+    },
+    {
+      id: '2',
+      name: 'Featured Add-On',
+      subtitle: 'Storefront Item',
+      qty: 1,
+      price: 20.0,
+    },
+  ]);
+  const [newItemName, setNewItemName] = useState<string>('');
+  const [newItemPrice, setNewItemPrice] = useState<string>('');
 
   useEffect(() => {
     let cancelled = false;
@@ -45,49 +92,30 @@ export const CashierView: React.FC<CashierViewProps> = ({
         ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
         : '/api/members';
 
-    authFetch(membersUrl)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        if (cancelled || !Array.isArray(data)) return;
-        const mapped: CashierMember[] = data.map((m: any) => {
-          const pts = Number(m.points || 0);
-          return {
-            id: m.id,
-            uid: `#${m.member_id || m.id}`,
-            name: m.customer_name || m.name || 'Member',
-            tier: pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER',
-            points: pts,
-          };
-        });
-        setMembers(mapped);
-        if (data[0]?.store_name) setStoreName(data[0].store_name);
-      })
-      .catch(() => {
-        if (!cancelled) setMembers([]);
-      });
-
-    if (activeSlug) {
-      authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((t) => {
-          if (!cancelled && t?.name) setStoreName(t.name);
-        })
-        .catch(() => {});
-    }
-
     const cfgUrl =
       isSuperAdmin && activeSlug
         ? `/api/program-config?slug=${encodeURIComponent(activeSlug)}`
         : '/api/program-config';
-    authFetch(cfgUrl)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        if (data.config?.earnVelocity) {
-          setEarnVelocity(Number(data.config.earnVelocity));
+
+    Promise.all([
+      authFetch(cfgUrl).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+      authFetch(membersUrl).then((res) => (res.ok ? res.json() : [])).catch(() => []),
+    ]).then(([cfgData, membersData]) => {
+      if (cancelled) return;
+      let loadedTiers = DEFAULT_TIERS;
+      if (cfgData) {
+        if (cfgData.config?.earnVelocity) {
+          setEarnVelocity(Number(cfgData.config.earnVelocity));
         }
-        if (Array.isArray(data.coupons)) {
-          const activeCoupons: LoyaltyPerk[] = data.coupons
+        if (cfgData.config?.minFloor !== undefined) {
+          setMinFloor(Number(cfgData.config.minFloor));
+        }
+        if (Array.isArray(cfgData.config?.tiers) && cfgData.config.tiers.length > 0) {
+          loadedTiers = cfgData.config.tiers;
+          setTiers(loadedTiers);
+        }
+        if (Array.isArray(cfgData.coupons)) {
+          const activeCoupons: LoyaltyPerk[] = cfgData.coupons
             .filter((c: any) => c.active !== false)
             .map((c: any) => ({
               id: c.id,
@@ -100,51 +128,117 @@ export const CashierView: React.FC<CashierViewProps> = ({
             }));
           setPerks(activeCoupons);
         }
-      })
-      .catch(() => {});
+      }
+
+      if (Array.isArray(membersData)) {
+        const mapped: CashierMember[] = membersData.map((m: any) => {
+          const pts = Number(m.points || 0);
+          return {
+            id: m.id,
+            uid: `#${m.member_id || m.id}`,
+            name: m.customer_name || m.name || 'Member',
+            tier: resolveTier(pts, loadedTiers).name,
+            points: pts,
+          };
+        });
+        setMembers(mapped);
+        if (selectedMemberId) {
+          const idx = mapped.findIndex((m) => m.id === selectedMemberId || m.uid === `#${selectedMemberId}`);
+          if (idx >= 0) setSelectedIdx(idx);
+        }
+        if (membersData[0]?.store_name) setStoreName(membersData[0].store_name);
+      }
+    });
+
+    if (activeSlug) {
+      authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((t) => {
+          if (!cancelled && t?.name) setStoreName(t.name);
+        })
+        .catch(() => {});
+    }
 
     return () => {
       cancelled = true;
     };
   }, [activeSlug, userRole, isSuperAdmin]);
 
+  useEffect(() => {
+    if (!selectedMemberId || members.length === 0) return;
+    const idx = members.findIndex((m) => m.id === selectedMemberId || m.uid === `#${selectedMemberId}`);
+    if (idx >= 0) {
+      setSelectedIdx(idx);
+      setPerks((prev) => prev.map((p) => ({ ...p, active: false })));
+    }
+  }, [selectedMemberId, members]);
+
   const activeMember = members.length > 0 ? members[selectedIdx % members.length] : null;
-
-  // Order items
-  const [orderItems] = useState<OrderItem[]>([
-    {
-      id: '1',
-      name: 'Standard Basket Order',
-      subtitle: 'Storefront POS Line Item',
-      qty: 1,
-      price: 35.0,
-    },
-    {
-      id: '2',
-      name: 'Featured Add-On',
-      subtitle: 'Counter Checkout Item',
-      qty: 1,
-      price: 20.0,
-    },
-  ]);
-
-  const [earnVelocity, setEarnVelocity] = useState<number>(10);
-  const [perks, setPerks] = useState<LoyaltyPerk[]>([]);
+  const activeTierObj = activeMember ? resolveTier(activeMember.points, tiers) : tiers[0] || DEFAULT_TIERS[0];
 
   const grossTotal = orderItems.reduce((acc, item) => acc + item.price * item.qty, 0);
   const totalDiscount = perks.filter((p) => p.active).reduce((acc, p) => acc + p.discountAmount, 0);
   const netDue = Math.max(0, grossTotal - totalDiscount);
 
+  useEffect(() => {
+    setCurrentTotal(netDue);
+    setInputBuffer('');
+  }, [netDue]);
+
+  const handleUpdateQty = (id: string, delta: number) => {
+    sounds.click(900, 0.015);
+    setOrderItems((prev) =>
+      prev
+        .map((item) => (item.id === id ? { ...item, qty: Math.max(0, item.qty + delta) } : item))
+        .filter((item) => item.qty > 0)
+    );
+  };
+
+  const handleAddOrderItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedPrice = parseFloat(newItemPrice);
+    if (!newItemName.trim() || isNaN(parsedPrice) || parsedPrice <= 0) return;
+    sounds.click(1050, 0.02);
+    setOrderItems((prev) => [
+      ...prev,
+      {
+        id: `item-${Date.now()}`,
+        name: newItemName.trim(),
+        subtitle: 'Custom POS Item',
+        qty: 1,
+        price: parsedPrice,
+      },
+    ]);
+    setNewItemName('');
+    setNewItemPrice('');
+  };
+
   const togglePerk = (id: string) => {
+    if (!activeMember) return;
+    const target = perks.find((p) => p.id === id);
+    if (!target) return;
+    const activeCostWithoutTarget = perks
+      .filter((p) => p.active && p.id !== id)
+      .reduce((acc, p) => acc + p.pointsCost, 0);
+    if (!target.active) {
+      if (activeMember.points < minFloor) {
+        setIsErrorToast(true);
+        setToastSummary(`Minimum redemption floor is ${minFloor} PTS (member has ${activeMember.points} PTS)`);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3200);
+        return;
+      }
+      if (activeMember.points < activeCostWithoutTarget + target.pointsCost) {
+        setIsErrorToast(true);
+        setToastSummary(`Insufficient balance: needs ${activeCostWithoutTarget + target.pointsCost} PTS`);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3200);
+        return;
+      }
+    }
     sounds.click(850, 0.02);
     setPerks((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          const nextActive = !p.active;
-          return { ...p, active: nextActive };
-        }
-        return p;
-      })
+      prev.map((p) => (p.id === id ? { ...p, active: !p.active } : p))
     );
   };
 
@@ -190,13 +284,14 @@ export const CashierView: React.FC<CashierViewProps> = ({
   const handleCheckout = async () => {
     sounds.chime();
     if (!activeMember) {
-      setToastSummary(`Tender authorized ($${currentTotal.toFixed(2)}) — no enrolled member selected for ${storeName}`);
+      setIsErrorToast(true);
+      setToastSummary(`No enrolled member selected for ${storeName}`);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3800);
       return;
     }
 
-    const earnedPts = Math.max(1, Math.round(currentTotal * earnVelocity));
+    const earnedPts = currentTotal > 0 ? Math.max(1, Math.round(currentTotal * earnVelocity * (activeTierObj.multiplier || 1))) : 0;
     const redeemedCost = perks.filter((p) => p.active).reduce((acc, p) => acc + p.pointsCost, 0);
     const netDelta = earnedPts - redeemedCost;
     try {
@@ -205,25 +300,31 @@ export const CashierView: React.FC<CashierViewProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           points: netDelta,
+          redeemingCoupon: redeemedCost > 0,
+          redeemPoints: redeemedCost,
           reason:
             redeemedCost > 0
               ? `POS Checkout ($${currentTotal.toFixed(2)}, +${earnedPts} / -${redeemedCost} coupon pts)`
-              : `POS Checkout ($${currentTotal.toFixed(2)} @ ${earnVelocity} pts/$1)`,
+              : `POS Checkout ($${currentTotal.toFixed(2)} @ ${earnVelocity}x${activeTierObj.multiplier || 1})`,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && typeof data.newPoints === 'number') {
         const nextPts = data.newPoints;
-        const nextTier = nextPts >= 2000 ? 'PLATINUM' : nextPts >= 1000 ? 'GOLD VIP' : 'SILVER';
+        const nextTier = data.tier || resolveTier(nextPts, tiers).name;
         setMembers((prev) =>
           prev.map((m) => (m.id === activeMember.id ? { ...m, points: nextPts, tier: nextTier } : m))
         );
-        setToastSummary(`Pass updated for ${activeMember.name} (+${earnedPts} pts • Total ${nextPts.toLocaleString()} pts)`);
+        setPerks((prev) => prev.map((p) => ({ ...p, active: false })));
+        setIsErrorToast(false);
+        setToastSummary(`Pass updated for ${activeMember.name} (${netDelta >= 0 ? `+${netDelta}` : netDelta} pts • Balance ${nextPts.toLocaleString()} pts)`);
       } else {
-        setToastSummary(data.error || `Completed checkout for ${activeMember.name}`);
+        setIsErrorToast(true);
+        setToastSummary(data.error || `Failed to process checkout for ${activeMember.name}`);
       }
     } catch {
-      setToastSummary(`Checkout recorded locally for ${activeMember.name}`);
+      setIsErrorToast(true);
+      setToastSummary(`Network error reaching server for ${activeMember.name}`);
     }
 
     setShowToast(true);
@@ -372,7 +473,7 @@ export const CashierView: React.FC<CashierViewProps> = ({
                   Available Loyalty Perks
                 </span>
                 <span className="font-label-sm text-label-sm text-primary font-bold">
-                  Tap to Toggle
+                  Min Floor: {minFloor} pts
                 </span>
               </div>
               {perks.length === 0 ? (
@@ -383,37 +484,46 @@ export const CashierView: React.FC<CashierViewProps> = ({
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {perks.map((perk) => (
-                    <button
-                      key={perk.id}
-                      onClick={() => togglePerk(perk.id)}
-                      className={`flex items-center gap-3 p-3 rounded-full text-left group transition-all ${
-                        perk.active
-                          ? 'bg-surface-container tactile-deboss border border-primary-container/30'
-                          : 'bg-surface-container tactile-btn opacity-85'
-                      }`}
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${
+                  {perks.map((perk) => {
+                    const memberPts = activeMember?.points || 0;
+                    const disabled = !perk.active && (!activeMember || memberPts < minFloor || memberPts < perk.pointsCost);
+                    return (
+                      <button
+                        key={perk.id}
+                        type="button"
+                        onClick={() => togglePerk(perk.id)}
+                        disabled={disabled}
+                        title={disabled ? `Requires ${Math.max(minFloor, perk.pointsCost)} PTS` : `Apply -$${perk.discountAmount}`}
+                        className={`flex items-center gap-3 p-3 rounded-2xl text-left group transition-all ${
                           perk.active
-                            ? 'bg-primary-container text-on-primary tactile-glow'
-                            : 'bg-surface-container-high text-on-surface-variant'
+                            ? 'bg-surface-container tactile-deboss border border-primary-container/40'
+                            : disabled
+                            ? 'bg-surface-container opacity-45 cursor-not-allowed'
+                            : 'bg-surface-container tactile-btn opacity-90 hover:opacity-100'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-[16px]">
-                          {perk.icon}
-                        </span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-label-md text-label-md text-on-surface font-bold truncate">
-                          {perk.title}
-                        </p>
-                        <p className="font-label-sm text-label-sm text-on-surface-variant">
-                          {perk.pointsCost} pts
-                        </p>
-                      </div>
-                    </button>
-                  ))}
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${
+                            perk.active
+                              ? 'bg-primary-container text-on-primary tactile-glow'
+                              : 'bg-surface-container-high text-on-surface-variant'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">
+                            {perk.icon}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-label-md text-label-md text-on-surface font-bold truncate">
+                            {perk.title}
+                          </p>
+                          <p className="font-label-sm text-label-sm text-on-surface-variant tabular-nums">
+                            {perk.pointsCost} pts • -${perk.discountAmount}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -431,54 +541,96 @@ export const CashierView: React.FC<CashierViewProps> = ({
                     Order Breakdown
                   </span>
                 </div>
-                <span className="font-label-md text-label-md text-on-surface-variant bg-surface-container-high px-2.5 py-1 rounded-full">
-                  {orderItems.length} Items
+                <span className="font-label-md text-label-md text-on-surface-variant bg-surface-container-high px-2.5 py-1 rounded-full tabular-nums">
+                  {orderItems.reduce((s, i) => s + i.qty, 0)} Items
                 </span>
               </div>
-              <div className="space-y-3 font-body-md text-body-md">
+              <div className="space-y-2.5 font-body-md text-body-md">
                 {orderItems.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-surface-container/60 hover:bg-surface-container transition-colors"
+                    className="flex items-center justify-between gap-2 p-3 rounded-lg bg-surface-container/60 hover:bg-surface-container transition-colors"
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="w-7 h-7 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center justify-center font-bold">
-                        {item.qty}×
-                      </span>
-                      <div>
-                        <p className="text-on-surface font-medium">{item.name}</p>
-                        <p className="font-body-sm text-body-sm text-on-surface-variant">
-                          {item.subtitle}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex items-center gap-1 bg-surface-container-high rounded-full px-1.5 py-0.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQty(item.id, -1)}
+                          className="w-5 h-5 rounded-full hover:bg-surface text-on-surface-variant font-bold text-xs flex items-center justify-center"
+                        >
+                          -
+                        </button>
+                        <span className="w-5 text-center font-label-md text-xs font-bold tabular-nums">
+                          {item.qty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQty(item.id, 1)}
+                          className="w-5 h-5 rounded-full hover:bg-surface text-on-surface-variant font-bold text-xs flex items-center justify-center"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-on-surface font-medium truncate">{item.name}</p>
+                        <p className="font-body-sm text-body-sm text-on-surface-variant truncate">
+                          ${item.price.toFixed(2)} ea
                         </p>
                       </div>
                     </div>
-                    <span className="font-semibold text-on-surface">
+                    <span className="font-semibold text-on-surface tabular-nums shrink-0">
                       ${(item.price * item.qty).toFixed(2)}
                     </span>
                   </div>
                 ))}
               </div>
+
+              {/* Add Line Item Form */}
+              <form onSubmit={handleAddOrderItem} className="mt-3 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  placeholder="Add item name..."
+                  className="flex-1 min-w-0 h-9 px-3 rounded-lg bg-surface tactile-deboss text-xs text-on-surface focus:outline-none"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={newItemPrice}
+                  onChange={(e) => setNewItemPrice(e.target.value)}
+                  placeholder="$ Price"
+                  className="w-20 h-9 px-2.5 rounded-lg bg-surface tactile-deboss text-xs text-on-surface font-mono focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="h-9 px-3 rounded-lg bg-surface-container text-primary font-label-sm text-xs font-bold tactile-btn hover:brightness-95 shrink-0"
+                >
+                  + Add
+                </button>
+              </form>
             </div>
 
             {/* Price Ledger Footnotes */}
-            <div className="mt-6 pt-4 border-t-0 bg-surface-container-high/30 rounded-lg p-4 tactile-deboss space-y-2">
+            <div className="mt-5 pt-4 border-t-0 bg-surface-container-high/30 rounded-lg p-4 tactile-deboss space-y-2">
               <div className="flex justify-between font-body-sm text-body-sm text-on-surface-variant">
                 <span>Gross Total</span>
-                <span>${grossTotal.toFixed(2)}</span>
+                <span className="tabular-nums">${grossTotal.toFixed(2)}</span>
               </div>
               {totalDiscount > 0 && (
                 <div className="flex justify-between font-body-sm text-body-sm text-primary font-medium">
                   <span>Loyalty Perk Discount</span>
-                  <span>-${totalDiscount.toFixed(2)}</span>
+                  <span className="tabular-nums">-${totalDiscount.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between font-body-sm text-body-sm text-on-surface-variant">
-                <span>Taxes (Included 0.00%)</span>
-                <span>$0.00</span>
+                <span>Earn Rate ({activeTierObj.name})</span>
+                <span className="tabular-nums">{earnVelocity} pts/$1 × {activeTierObj.multiplier}x</span>
               </div>
               <div className="flex justify-between font-headline-sm text-headline-sm text-on-surface font-bold pt-2">
                 <span>Net Balance Due</span>
-                <span className="text-primary-container">${netDue.toFixed(2)}</span>
+                <span className="text-primary-container tabular-nums">${netDue.toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -824,13 +976,23 @@ export const CashierView: React.FC<CashierViewProps> = ({
           showToast ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0'
         }`}
       >
-        <div className="bg-surface-container-lowest text-on-surface rounded-full px-6 py-4 tactile-card flex items-center gap-4 ring-1 ring-primary-container/20">
-          <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center">
-            <span className="material-symbols-outlined text-[18px]">verified</span>
+        <div
+          className={`bg-surface-container-lowest text-on-surface rounded-full px-6 py-4 tactile-card flex items-center gap-4 ring-1 ${
+            isErrorToast ? 'ring-red-500/40' : 'ring-primary-container/20'
+          }`}
+        >
+          <div
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${
+              isErrorToast ? 'bg-red-600' : 'bg-primary-container'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              {isErrorToast ? 'error' : 'verified'}
+            </span>
           </div>
           <div>
             <p className="font-label-md text-label-md font-bold text-on-surface">
-              Payment &amp; Loyalty Sync Successful
+              {isErrorToast ? 'Checkout Blocked' : 'Payment & Loyalty Sync Successful'}
             </p>
             <p className="font-body-sm text-body-sm text-on-surface-variant">
               {toastSummary}

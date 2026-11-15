@@ -476,7 +476,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     type="text"
                     value={storeName}
                     onChange={(e) => setStoreName(e.target.value)}
-                    placeholder="e.g. Banlis Bistro"
+                    placeholder="e.g. Your Store Name"
                     className="bg-transparent w-full font-body-md text-body-md text-on-surface focus:outline-none"
                   />
                 </div>

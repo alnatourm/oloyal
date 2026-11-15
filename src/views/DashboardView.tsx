@@ -37,9 +37,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   });
 
   const [members, setMembers] = useState<CustomerMember[]>([]);
+  const [tiers, setTiers] = useState<Array<{ id: string; name: string; minPoints: number; multiplier: number }>>([
+    { id: 'silver', name: 'SILVER', minPoints: 0, multiplier: 1.0 },
+    { id: 'gold', name: 'GOLD VIP', minPoints: 1000, multiplier: 1.25 },
+    { id: 'platinum', name: 'PLATINUM', minPoints: 2000, multiplier: 1.5 },
+  ]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedTier, setSelectedTier] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const resolveTier = (pts: number, tierList: Array<{ name: string; minPoints: number }>) => {
+    const sorted = [...tierList].sort((a, b) => Number(a.minPoints) - Number(b.minPoints));
+    let matched = sorted[0] || { name: 'SILVER', minPoints: 0 };
+    for (const t of sorted) {
+      if (pts >= Number(t.minPoints)) matched = t;
+    }
+    return String(matched.name || 'SILVER');
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -82,65 +96,84 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           .catch((err) => console.error('Error fetching tenant:', err))
       : Promise.resolve();
 
+    const cfgUrl =
+      isSuperAdmin && activeSlug
+        ? `/api/program-config?slug=${encodeURIComponent(activeSlug)}`
+        : '/api/program-config';
+
     const membersUrl =
       isSuperAdmin && activeSlug
         ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
         : '/api/members';
 
-    const loadMembers = authFetch(membersUrl)
-      .then((res) => {
-        const contentType = res.headers.get('content-type');
-        if (res.ok && contentType && contentType.includes('application/json')) {
-          return res.json();
-        }
-        return [];
-      })
-      .then((data) => {
-        if (cancelled) return;
-        if (Array.isArray(data)) {
-          const mapped: CustomerMember[] = data.map((m: any) => {
-            const pts = Number(m.points || 0);
-            const tierStr = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
-            return {
-              id: m.id,
-              uid: `#${m.member_id || m.id}`,
-              name: m.customer_name || m.name || 'Member',
-              phone: m.phone || '',
-              avatarUrl: m.logo_url || '',
-              tier: tierStr,
-              tierColor:
-                tierStr === 'PLATINUM'
-                  ? 'text-purple-500'
-                  : tierStr === 'GOLD VIP'
-                  ? 'text-primary'
-                  : 'text-on-surface',
-              tierBg:
-                tierStr === 'PLATINUM'
-                  ? 'bg-purple-100 text-purple-800'
-                  : tierStr === 'GOLD VIP'
-                  ? 'bg-primary-fixed text-on-primary-fixed'
-                  : 'bg-surface-container-high text-on-surface-variant',
-              points: pts,
-              tierCap: 2000,
-              entryPoints: 1000,
-              thresholdPoints: 2000,
-              status: 'NFC Active Node',
-              joinedDate: '2026',
-              syncedTime: 'Just now',
-              visitCount: 1,
-            };
-          });
-          setMembers(mapped);
-        } else {
-          setMembers([]);
-        }
-      })
-      .catch((err) => {
-        console.error('Error fetching tenant members:', err);
-        if (!cancelled) setMembers([]);
-      });
+    const loadConfigAndMembers = Promise.all([
+      authFetch(cfgUrl).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+      authFetch(membersUrl)
+        .then((res) => {
+          const contentType = res.headers.get('content-type');
+          if (res.ok && contentType && contentType.includes('application/json')) {
+            return res.json();
+          }
+          return [];
+        })
+        .catch((err) => {
+          console.error('Error fetching tenant members:', err);
+          return [];
+        }),
+    ]).then(([cfgData, data]) => {
+      if (cancelled) return;
+      const activeTiers =
+        cfgData?.config?.tiers && Array.isArray(cfgData.config.tiers) && cfgData.config.tiers.length > 0
+          ? cfgData.config.tiers
+          : [
+              { id: 'silver', name: 'SILVER', minPoints: 0, multiplier: 1.0 },
+              { id: 'gold', name: 'GOLD VIP', minPoints: 1000, multiplier: 1.25 },
+              { id: 'platinum', name: 'PLATINUM', minPoints: 2000, multiplier: 1.5 },
+            ];
+      setTiers(activeTiers);
 
-    Promise.all([loadTenant, loadMembers]).finally(() => {
+      if (Array.isArray(data)) {
+        const mapped: CustomerMember[] = data.map((m: any) => {
+          const pts = Number(m.points || 0);
+          const tierStr = resolveTier(pts, activeTiers);
+          const highestTierName = [...activeTiers].sort((a: any, b: any) => b.minPoints - a.minPoints)[0]?.name;
+          const lowestTierName = [...activeTiers].sort((a: any, b: any) => a.minPoints - b.minPoints)[0]?.name;
+          return {
+            id: m.id,
+            uid: `#${m.member_id || m.id}`,
+            name: m.customer_name || m.name || 'Member',
+            phone: m.phone || '',
+            avatarUrl: m.logo_url || '',
+            tier: tierStr,
+            tierColor:
+              tierStr === highestTierName
+                ? 'text-purple-500'
+                : tierStr !== lowestTierName
+                ? 'text-primary'
+                : 'text-on-surface',
+            tierBg:
+              tierStr === highestTierName
+                ? 'bg-purple-100 text-purple-800'
+                : tierStr !== lowestTierName
+                ? 'bg-primary-fixed text-on-primary-fixed'
+                : 'bg-surface-container-high text-on-surface-variant',
+            points: pts,
+            tierCap: 2000,
+            entryPoints: 0,
+            thresholdPoints: 1000,
+            status: 'NFC Active Node',
+            joinedDate: '2026',
+            syncedTime: 'Just now',
+            visitCount: 1,
+          };
+        });
+        setMembers(mapped);
+      } else {
+        setMembers([]);
+      }
+    });
+
+    Promise.all([loadTenant, loadConfigAndMembers]).finally(() => {
       if (!cancelled) setIsLoading(false);
     });
 
@@ -380,11 +413,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1 self-start sm:self-auto overflow-x-auto p-1 bg-surface-container rounded-full">
-            {['ALL', 'SILVER', 'GOLD VIP', 'PLATINUM'].map((tier) => (
+            {['ALL', ...tiers.map((t) => t.name)].map((tier) => (
               <button
                 key={tier}
                 onClick={() => setSelectedTier(tier)}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 ${
                   selectedTier === tier
                     ? 'bg-surface-container-lowest text-on-surface shadow-sm'
                     : 'text-on-surface-variant hover:text-on-surface'

@@ -70,6 +70,8 @@ export const PushGeoStudioView: React.FC<PushGeoStudioViewProps> = ({
   const [radiusMeters, setRadiusMeters] = useState<150 | 300 | 750>(300);
   const [triggerRule, setTriggerRule] = useState<'entry' | 'dwell' | 'exit'>('entry');
   const [venueLabel, setVenueLabel] = useState<string>('Primary Storefront • Smart Tap Zone');
+  const [venueLat, setVenueLat] = useState<string>('');
+  const [venueLng, setVenueLng] = useState<string>('');
   const [isEditingVenue, setIsEditingVenue] = useState<boolean>(false);
   const [pushTitle, setPushTitle] = useState<string>('Double Points Tonight in Store');
   const [pushBody, setPushBody] = useState<string>(
@@ -239,6 +241,7 @@ export const PushGeoStudioView: React.FC<PushGeoStudioViewProps> = ({
           slug: isSuperAdmin ? activeSlug : undefined,
           segment,
           pushTitle,
+          pushBody,
         }),
       });
       const data = await res.json();
@@ -247,7 +250,7 @@ export const PushGeoStudioView: React.FC<PushGeoStudioViewProps> = ({
       } else {
         showNotice(
           'success',
-          `Smart Tap test verified for ${data.storeName || tenant.name} (${data.deliveredTo} matching ${segment.toUpperCase()} passes).`
+          `Test push dispatched for ${data.storeName || tenant.name} (${data.deliveredTo} matching ${segment.toUpperCase()} passes, ${data.walletSyncedCount ?? 0} Wallet passes notified).`
         );
       }
     } catch {
@@ -270,6 +273,8 @@ export const PushGeoStudioView: React.FC<PushGeoStudioViewProps> = ({
     sounds.click(1200, 0.04);
     setIsSubmitting(true);
     try {
+      const parsedLat = venueLat.trim() !== '' && !isNaN(Number(venueLat)) ? Number(venueLat) : null;
+      const parsedLng = venueLng.trim() !== '' && !isNaN(Number(venueLng)) ? Number(venueLng) : null;
       const res = await authFetch('/api/geo-campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -284,6 +289,8 @@ export const PushGeoStudioView: React.FC<PushGeoStudioViewProps> = ({
           cadence,
           actionLabel,
           venueLabel: venueLabel.trim(),
+          venueLat: parsedLat,
+          venueLng: parsedLng,
           heroSync,
           status: cadence === 'fixed' ? 'Scheduled' : 'Active',
         }),
@@ -293,7 +300,12 @@ export const PushGeoStudioView: React.FC<PushGeoStudioViewProps> = ({
         showNotice('error', data?.error || 'Failed to save geo-campaign');
       } else if (data?.campaign) {
         setCampaigns((prev) => [data.campaign, ...prev]);
-        showNotice('success', `Dispatched "${data.campaign.title}" for ${tenant.name}.`);
+        showNotice(
+          'success',
+          `Dispatched "${data.campaign.title}" for ${tenant.name}${
+            typeof data.walletSyncedCount === 'number' ? ` (${data.walletSyncedCount} Wallet passes notified)` : ''
+          }.`
+        );
       }
     } catch {
       showNotice('error', 'Network error while dispatching geo-campaign.');
@@ -497,19 +509,39 @@ export const PushGeoStudioView: React.FC<PushGeoStudioViewProps> = ({
                     {tenant.name}
                   </span>
                   {isEditingVenue ? (
-                    <input
-                      type="text"
-                      value={venueLabel}
-                      onChange={(e) => setVenueLabel(e.target.value)}
-                      onBlur={() => setIsEditingVenue(false)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') setIsEditingVenue(false);
-                      }}
-                      autoFocus
-                      className="text-xs text-on-surface bg-white/80 rounded px-1.5 py-0.5 outline-none ring-1 ring-primary-container/40 mt-0.5"
-                    />
+                    <div className="flex flex-col gap-1 mt-0.5">
+                      <input
+                        type="text"
+                        value={venueLabel}
+                        onChange={(e) => setVenueLabel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setIsEditingVenue(false);
+                        }}
+                        autoFocus
+                        placeholder="Store address or zone"
+                        className="text-xs text-on-surface bg-white/80 rounded px-1.5 py-0.5 outline-none ring-1 ring-primary-container/40"
+                      />
+                      <div className="grid grid-cols-2 gap-1">
+                        <input
+                          type="text"
+                          value={venueLat}
+                          onChange={(e) => setVenueLat(e.target.value)}
+                          placeholder="Lat (e.g. 37.7749)"
+                          className="text-[11px] font-mono text-on-surface bg-white/80 rounded px-1.5 py-0.5 outline-none ring-1 ring-primary-container/30"
+                        />
+                        <input
+                          type="text"
+                          value={venueLng}
+                          onChange={(e) => setVenueLng(e.target.value)}
+                          placeholder="Lng (e.g. -122.4194)"
+                          className="text-[11px] font-mono text-on-surface bg-white/80 rounded px-1.5 py-0.5 outline-none ring-1 ring-primary-container/30"
+                        />
+                      </div>
+                    </div>
                   ) : (
-                    <span className="text-xs text-on-surface-variant truncate">{venueLabel}</span>
+                    <span className="text-xs text-on-surface-variant truncate">
+                      {venueLabel}{venueLat && venueLng ? ` (${venueLat}, ${venueLng})` : ''}
+                    </span>
                   )}
                 </div>
               </div>

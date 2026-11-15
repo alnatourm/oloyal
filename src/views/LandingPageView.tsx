@@ -464,7 +464,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-label-sm text-label-sm font-bold text-on-surface truncate">
-                        Banlis Bistro • Proximity Push
+                        Roast &amp; Co Bistro • Proximity Push
                       </p>
                       <p className="font-body-sm text-body-sm text-on-surface-variant truncate">
                         🔥 Double Points Tonight! Tap at register to redeem.
@@ -487,7 +487,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
 
                     <div className="w-full h-24 rounded-xl bg-gradient-to-tr from-primary to-[#ff5722] p-3 flex flex-col justify-between text-white shadow-sm mb-3">
                       <div className="flex items-center justify-between">
-                        <span className="font-headline-sm text-sm font-bold tracking-tight">BANLIS BISTRO</span>
+                        <span className="font-headline-sm text-sm font-bold tracking-tight">ROAST &amp; CO</span>
                         <span className="px-2 py-0.5 rounded-full bg-white/20 text-white font-label-sm text-[10px] backdrop-blur-sm font-bold">
                           VIP GOLD
                         </span>
@@ -501,7 +501,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     <div className="grid grid-cols-2 gap-1 mb-2 font-label-sm text-xs">
                       <div>
                         <span className="text-on-surface-variant text-[10px]">Member</span>
-                        <p className="font-semibold text-on-surface">Marcus Vance</p>
+                        <p className="font-semibold text-on-surface">Alex Rivera</p>
                       </div>
                       <div>
                         <span className="text-on-surface-variant text-[10px]">Free Entrée</span>
@@ -897,8 +897,8 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 {[
                   {
                     quote: "Our repeat dining frequency leaped by 42% after switching to PassLoyal's Google Wallet passes. Zero app download friction meant 9 out of 10 guests actually added the card right at the table.",
-                    name: 'Chef Marcus Vance',
-                    role: 'Owner, Banlis Bistro (3 Locations)',
+                    name: 'Chef Alex Rivera',
+                    role: 'Owner, Roast & Co Bistro (3 Locations)',
                     img: 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=150&auto=format&fit=crop',
                   },
                   {

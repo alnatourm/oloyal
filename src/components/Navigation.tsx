@@ -30,6 +30,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     { path: 'push-and-geo-studio', title: 'Push & Geo Studio', icon: 'near_me' },
     { path: 'customer-join', title: 'Customer Enrollment (Add to Wallet)', icon: 'add_to_home_screen' },
     { path: 'onboarding', title: 'Merchant Onboarding', icon: 'tune' },
+    { path: 'reports', title: 'Analytics & Ledger', icon: 'analytics' },
     { path: 'billing', title: 'SaaS Billing & Limits', icon: 'credit_card' },
     { path: 'super-admin', title: 'Super Admin Master Issuer', icon: 'admin_panel_settings', adminOnly: true },
   ];

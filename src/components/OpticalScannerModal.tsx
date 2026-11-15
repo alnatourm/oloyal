@@ -1,28 +1,83 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { sounds } from '../utils/sound';
+import { authFetch } from '../utils/auth';
+
+interface ScannedMember {
+  id: string;
+  member_id: string;
+  customer_name: string;
+  email?: string;
+  phone?: string;
+  points: number;
+}
 
 interface OpticalScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onScanSuccess?: () => void;
+  activeSlug?: string;
+  userRole?: 'super_admin' | 'admin' | 'merchant';
+  onScanSuccess?: (memberId?: string) => void;
 }
 
 export const OpticalScannerModal: React.FC<OpticalScannerModalProps> = ({
   isOpen,
   onClose,
+  activeSlug = '',
+  userRole = 'merchant',
   onScanSuccess,
 }) => {
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const [beepOn, setBeepOn] = useState<boolean>(true);
+  const [scanInput, setScanInput] = useState<string>('');
+  const [members, setMembers] = useState<ScannedMember[]>([]);
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setIsLoading(true);
+    const isAdmin = userRole === 'super_admin' || userRole === 'admin';
+    const url = isAdmin && activeSlug
+      ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
+      : '/api/members';
+
+    authFetch(url)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => {
+        if (Array.isArray(rows)) {
+          setMembers(rows);
+          if (rows.length > 0 && !selectedId) {
+            setSelectedId(rows[0].id);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, [isOpen, activeSlug, userRole]);
 
   if (!isOpen) return null;
 
+  const q = scanInput.trim().toLowerCase();
+  const filteredMembers = q
+    ? members.filter(
+        (m) =>
+          (m.customer_name || '').toLowerCase().includes(q) ||
+          (m.member_id || '').toLowerCase().includes(q) ||
+          (m.phone || '').toLowerCase().includes(q) ||
+          (m.email || '').toLowerCase().includes(q)
+      )
+    : members;
+
+  const matchedMember =
+    filteredMembers.find((m) => m.id === selectedId) || filteredMembers[0] || null;
+
   const handleConfirm = () => {
+    if (!matchedMember) return;
     if (beepOn) sounds.scannerBeep();
     else sounds.chime();
 
     if (onScanSuccess) {
-      onScanSuccess();
+      onScanSuccess(matchedMember.id);
     }
     onClose();
   };
@@ -39,118 +94,147 @@ export const OpticalScannerModal: React.FC<OpticalScannerModalProps> = ({
             <div>
               <div className="flex items-center gap-2.5">
                 <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface tracking-tight">
-                  Optical Pass Scanner
+                  Optical Pass Scanner &amp; Lookup
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm uppercase tracking-wider font-semibold">
                   Ready
                 </span>
               </div>
               <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
-                Google Wallet QR &amp; Code-128 Optical Handshake
+                Scan barcode/QR value or look up a member in active store registry
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container tactile-deboss text-on-surface-variant font-label-sm text-label-sm">
-              <span className="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
-              <span>1080p HD Cam #01 • 60 FPS</span>
-            </div>
-            <button
-              onClick={() => {
-                sounds.click();
-                onClose();
-              }}
-              className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface-variant hover:text-on-surface transition-all"
-            >
-              <span className="material-symbols-outlined text-[20px]">close</span>
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              sounds.click();
+              onClose();
+            }}
+            className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tactile-btn text-on-surface-variant hover:text-on-surface transition-all"
+          >
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
         </div>
 
-        {/* Viewfinder Window */}
-        <div className="relative w-full h-80 rounded-2xl overflow-hidden bg-inverse-surface flex items-center justify-center border-2 border-surface-container shadow-inner">
-          <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary-container/20 via-transparent to-black pointer-events-none"></div>
+        {/* Barcode / Member ID input */}
+        <div className="h-12 px-4 rounded-2xl bg-surface tactile-deboss flex items-center gap-3">
+          <span className="material-symbols-outlined text-primary-container text-[20px]">barcode_reader</span>
+          <input
+            type="text"
+            autoFocus
+            value={scanInput}
+            onChange={(e) => setScanInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && matchedMember) {
+                e.preventDefault();
+                handleConfirm();
+              }
+            }}
+            placeholder="Scan barcode PL-XXXXXX or type customer name / phone..."
+            className="bg-transparent w-full font-body-md text-body-md text-on-surface focus:outline-none"
+          />
+          {scanInput && (
+            <button
+              type="button"
+              onClick={() => setScanInput('')}
+              className="text-outline hover:text-on-surface"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          )}
+        </div>
 
-          {/* Corner Brackets */}
-          <div className="absolute top-3 left-3 w-8 h-8 border-t-4 border-l-4 border-primary-container rounded-tl-lg z-20"></div>
-          <div className="absolute top-3 right-3 w-8 h-8 border-t-4 border-r-4 border-primary-container rounded-tr-lg z-20"></div>
-          <div className="absolute bottom-3 left-3 w-8 h-8 border-b-4 border-l-4 border-primary-container rounded-bl-lg z-20"></div>
-          <div className="absolute bottom-3 right-3 w-8 h-8 border-b-4 border-r-4 border-primary-container rounded-br-lg z-20"></div>
+        {/* Viewfinder / Matched Member Preview */}
+        <div className="relative w-full min-h-[260px] rounded-2xl overflow-hidden bg-inverse-surface flex flex-col justify-between p-5 border-2 border-surface-container shadow-inner">
+          <div className="absolute top-3 left-3 w-7 h-7 border-t-4 border-l-4 border-primary-container rounded-tl-lg pointer-events-none"></div>
+          <div className="absolute top-3 right-3 w-7 h-7 border-t-4 border-r-4 border-primary-container rounded-tr-lg pointer-events-none"></div>
+          <div className="absolute bottom-3 left-3 w-7 h-7 border-b-4 border-l-4 border-primary-container rounded-bl-lg pointer-events-none"></div>
+          <div className="absolute bottom-3 right-3 w-7 h-7 border-b-4 border-r-4 border-primary-container rounded-br-lg pointer-events-none"></div>
 
-          {/* Animated Scanning Beam */}
-          <div
-            className="absolute left-6 right-6 h-0.5 bg-primary-container shadow-[0_0_12px_#ff5722] z-20 animate-pulse"
-            style={{ top: '48%' }}
-          ></div>
-
-          {/* Detected Pass Card Banner */}
-          <div className="relative z-10 flex flex-col items-center gap-3 p-4 bg-surface-container-lowest/90 backdrop-blur-md rounded-2xl ring-2 ring-primary-container/70 tactile-glow max-w-sm w-full mx-4 shadow-xl">
-            <div className="flex items-center justify-between w-full pb-2 border-b border-surface-container">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary-container animate-ping"></span>
-                <span className="font-label-sm text-label-sm uppercase tracking-wider font-bold text-primary-container">
-                  Wallet Pass Detected (99.4%)
-                </span>
-              </div>
-              <span className="material-symbols-outlined text-primary-container text-[18px]">
-                verified
-              </span>
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center text-white/70 text-sm gap-2">
+              <span className="material-symbols-outlined animate-spin text-[20px]">refresh</span>
+              <span>Loading store member registry...</span>
             </div>
-            <div className="flex items-center gap-3.5 w-full">
-              <div className="w-16 h-16 rounded-xl bg-surface-container-lowest flex items-center justify-center tactile-deboss shrink-0 p-1">
-                <svg className="w-12 h-12 text-on-surface fill-current" viewBox="0 0 24 24">
-                  <path d="M2 2h8v8H2V2zm2 2v4h4V4H4zm10-2h8v8h-8V2zm2 2v4h4V4h-4zM2 14h8v8H2v-8zm2 2v4h4v-4H4zm14 0h2v2h-2v-2zm-4-2h2v4h-2v-4zm2 4h4v2h-4v-2zm2 2h2v2h-2v-2zm-6-2h2v4h-2v-4zm8-2h2v2h-2v-2z"></path>
-                </svg>
-              </div>
-              <div className="min-w-0 text-left flex-1">
-                <p className="font-headline-sm text-headline-sm font-bold text-on-surface truncate">
-                  Marcus Vance
-                </p>
-                <p className="font-body-sm text-body-sm text-primary font-semibold">
-                  Gold VIP • PASS-889042
-                </p>
-                <div className="flex items-center gap-1.5 mt-1 text-on-surface-variant font-label-sm text-label-sm">
-                  <span className="material-symbols-outlined text-[14px] text-tertiary">
-                    sync_saved_locally
+          ) : matchedMember ? (
+            <div className="relative z-10 flex flex-col gap-3 my-auto max-w-md w-full mx-auto">
+              <div className="flex flex-col gap-2 p-4 bg-surface-container-lowest/95 backdrop-blur-md rounded-2xl ring-2 ring-primary-container/70 shadow-xl">
+                <div className="flex items-center justify-between w-full pb-2 border-b border-surface-container">
+                  <span className="font-label-sm text-label-sm uppercase tracking-wider font-bold text-primary-container">
+                    Pass Matched
                   </span>
-                  <span>Google Smart Tap Synced</span>
+                  <span className="font-mono text-xs font-bold text-on-surface">
+                    {matchedMember.member_id}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3.5 w-full">
+                  <div className="w-12 h-12 rounded-xl bg-primary-fixed text-primary font-bold flex items-center justify-center text-lg shrink-0">
+                    {(matchedMember.customer_name || 'M').slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 text-left flex-1">
+                    <p className="font-headline-sm text-headline-sm font-bold text-on-surface truncate">
+                      {matchedMember.customer_name}
+                    </p>
+                    <p className="font-body-sm text-body-sm text-primary font-semibold tabular-nums">
+                      {Number(matchedMember.points || 0).toLocaleString()} PTS
+                      {matchedMember.phone ? ` • ${matchedMember.phone}` : ''}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {filteredMembers.length > 1 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {filteredMembers.slice(0, 5).map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        sounds.click();
+                        setSelectedId(m.id);
+                      }}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-all ${
+                        matchedMember.id === m.id
+                          ? 'bg-primary-container text-white'
+                          : 'bg-white/15 text-white hover:bg-white/25'
+                      }`}
+                    >
+                      {m.customer_name} ({m.member_id})
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-white/75 text-center gap-2">
+              <span className="material-symbols-outlined text-[36px] text-white/40">person_search</span>
+              <p className="font-semibold text-sm">No matching member pass found</p>
+              <p className="text-xs text-white/50">Enroll a customer first or try a different search term.</p>
+            </div>
+          )}
 
           {/* Camera controls overlay */}
-          <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between z-20">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  sounds.click();
-                  setTorchOn(!torchOn);
-                }}
-                className={`px-3 py-1 rounded-full backdrop-blur-sm text-on-surface font-label-sm text-label-sm font-bold flex items-center gap-1.5 tactile-btn ${
-                  torchOn ? 'bg-primary-container text-white' : 'bg-surface-container-lowest/80'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[16px]">highlight</span>
-                <span>Torch {torchOn ? 'ON' : 'OFF'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => sounds.click()}
-                className="px-3 py-1 rounded-full bg-surface-container-lowest/80 backdrop-blur-sm text-on-surface font-label-sm text-label-sm font-semibold flex items-center gap-1.5 tactile-btn"
-              >
-                <span className="material-symbols-outlined text-[16px]">flip_camera_ios</span>
-                <span>Lens: Overhead</span>
-              </button>
-            </div>
+          <div className="flex items-center justify-between z-20 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                sounds.click();
+                setTorchOn(!torchOn);
+              }}
+              className={`px-3 py-1 rounded-full backdrop-blur-sm font-label-sm text-label-sm font-bold flex items-center gap-1.5 tactile-btn ${
+                torchOn ? 'bg-primary-container text-white' : 'bg-surface-container-lowest/85 text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">highlight</span>
+              <span>Torch {torchOn ? 'ON' : 'OFF'}</span>
+            </button>
             <button
               type="button"
               onClick={() => {
                 sounds.click();
                 setBeepOn(!beepOn);
               }}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-lowest/80 backdrop-blur-sm text-on-surface font-label-sm text-label-sm"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-lowest/85 backdrop-blur-sm text-on-surface font-label-sm text-label-sm"
             >
               <span className="material-symbols-outlined text-[16px] text-primary-container">
                 {beepOn ? 'volume_up' : 'volume_off'}
@@ -161,7 +245,7 @@ export const OpticalScannerModal: React.FC<OpticalScannerModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between gap-4 pt-2">
+        <div className="flex items-center justify-between gap-4 pt-1">
           <button
             onClick={() => {
               sounds.click();
@@ -172,11 +256,12 @@ export const OpticalScannerModal: React.FC<OpticalScannerModalProps> = ({
             Cancel
           </button>
           <button
+            disabled={!matchedMember}
             onClick={handleConfirm}
-            className="flex-1 py-3 px-6 rounded-full bg-primary-container text-on-primary font-headline-sm text-headline-sm font-bold tactile-glow flex items-center justify-center gap-3 transition-transform active:scale-[0.99] shadow-md hover:bg-primary"
+            className="flex-1 py-3 px-6 rounded-full bg-primary-container text-on-primary font-headline-sm text-headline-sm font-bold tactile-glow flex items-center justify-center gap-3 transition-transform active:scale-[0.99] shadow-md hover:bg-primary disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-[20px]">done_all</span>
-            <span>Confirm Scanned Pass &amp; Apply Perks</span>
+            <span>Open Pass in POS Terminal</span>
             <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
           </button>
         </div>

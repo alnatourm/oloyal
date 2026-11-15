@@ -59,7 +59,7 @@ export interface CustomerMember {
   phone?: string;
   avatarUrl?: string;
   initials?: string;
-  tier: 'GOLD VIP' | 'SILVER' | 'PLATINUM' | 'BRONZE';
+  tier: string;
   tierColor: string;
   tierBg: string;
   points: number;

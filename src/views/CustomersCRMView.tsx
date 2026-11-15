@@ -9,19 +9,76 @@ interface CustomersCRMViewProps {
   onProvisionNewMember?: () => void;
 }
 
+interface TierDef {
+  id: string;
+  name: string;
+  minPoints: number;
+  multiplier: number;
+}
+
+interface MemberTx {
+  id: string;
+  change_amount: number;
+  reason: string;
+  created_at: string;
+}
+
+const DEFAULT_TIERS: TierDef[] = [
+  { id: 'silver', name: 'SILVER', minPoints: 0, multiplier: 1.0 },
+  { id: 'gold', name: 'GOLD VIP', minPoints: 1000, multiplier: 1.25 },
+  { id: 'platinum', name: 'PLATINUM', minPoints: 2000, multiplier: 1.5 },
+];
+
+function computeMemberTierMeta(pts: number, tierList: TierDef[]) {
+  const sorted = [...tierList].sort((a, b) => Number(a.minPoints) - Number(b.minPoints));
+  let idx = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    if (pts >= Number(sorted[i].minPoints)) idx = i;
+  }
+  const current = sorted[idx] || DEFAULT_TIERS[0];
+  const next = sorted[idx + 1];
+  const highestCap = Number(sorted[sorted.length - 1]?.minPoints || 2000);
+  const isTop = idx === sorted.length - 1 && sorted.length > 1;
+  const isBase = idx === 0;
+  return {
+    tier: String(current.name),
+    entryPoints: Number(current.minPoints || 0),
+    thresholdPoints: next ? Number(next.minPoints) : Math.max(Number(current.minPoints || 0) + 1000, pts),
+    tierCap: highestCap,
+    tierColor: isTop ? 'text-purple-500' : !isBase ? 'text-primary' : 'text-on-surface',
+    tierBg: isTop
+      ? 'bg-purple-100 text-purple-800'
+      : !isBase
+      ? 'bg-primary-fixed text-on-primary-fixed'
+      : 'bg-surface-container-high text-on-surface-variant',
+    isBase,
+  };
+}
+
 export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
   activeSlug = '',
   userRole = 'merchant',
   onProvisionNewMember,
 }) => {
   const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
-  const [members, setMembers] = useState<CustomerMember[]>([]);
+  const [members, setMembers] = useState<Array<CustomerMember & { email?: string; isBase?: boolean }>>([]);
+  const [tiers, setTiers] = useState<TierDef[]>(DEFAULT_TIERS);
   const [storeName, setStoreName] = useState<string>(activeSlug || 'Store');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const [filterSegment, setFilterSegment] = useState<'vip' | 'all' | 'pending'>('all');
+  const [filterSegment, setFilterSegment] = useState<'vip' | 'all' | 'base'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+
+  // Edit / Delete / History states
+  const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
+  const [editName, setEditName] = useState<string>('');
+  const [editPhone, setEditPhone] = useState<string>('');
+  const [editEmail, setEditEmail] = useState<string>('');
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState<boolean>(false);
+  const [transactions, setTransactions] = useState<MemberTx[]>([]);
+  const [isLoadingTx, setIsLoadingTx] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +87,8 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
     setIsLoading(true);
     setStoreName(activeSlug || 'Store');
 
-    if (!getAuthToken()) {
+    if (!getAuthToken() || (isSuperAdmin && !activeSlug)) {
+      if (isSuperAdmin && !activeSlug) setStoreName('Select a Store');
       setIsLoading(false);
       return;
     }
@@ -40,59 +98,59 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
         ? `/api/members?slug=${encodeURIComponent(activeSlug)}`
         : '/api/members';
 
-    const loadMembers = authFetch(membersUrl)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        if (cancelled) return;
-        if (Array.isArray(data)) {
-          const mapped: CustomerMember[] = data.map((m: any) => {
-            const pts = Number(m.points || 0);
-            const tierStr = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
-            return {
-              id: m.id,
-              uid: `#${m.member_id || m.id}`,
-              name: m.customer_name || m.name || 'Member',
-              phone: m.phone || '',
-              avatarUrl: m.logo_url || '',
-              initials: String(m.customer_name || m.name || 'M').slice(0, 2).toUpperCase(),
-              tier: tierStr,
-              tierColor:
-                tierStr === 'PLATINUM'
-                  ? 'text-purple-500'
-                  : tierStr === 'GOLD VIP'
-                  ? 'text-primary'
-                  : 'text-on-surface',
-              tierBg:
-                tierStr === 'PLATINUM'
-                  ? 'bg-purple-100 text-purple-800'
-                  : tierStr === 'GOLD VIP'
-                  ? 'bg-primary-fixed text-on-primary-fixed'
-                  : 'bg-surface-container-high text-on-surface-variant',
-              points: pts,
-              tierCap: 2000,
-              entryPoints: pts >= 2000 ? 2000 : pts >= 1000 ? 1000 : 0,
-              thresholdPoints: pts >= 2000 ? 5000 : pts >= 1000 ? 2000 : 1000,
-              status: 'NFC Active Node',
-              joinedDate: '2026',
-              syncedTime: 'Synced',
-              visitCount: 1,
-            };
-          });
-          setMembers(mapped);
-          if (mapped.length > 0) {
-            setSelectedMemberId(mapped[0].id);
-          }
-          if (data[0]?.store_name) {
-            setStoreName(data[0].store_name);
-          }
-        } else {
-          setMembers([]);
+    const cfgUrl =
+      isSuperAdmin && activeSlug
+        ? `/api/program-config?slug=${encodeURIComponent(activeSlug)}`
+        : '/api/program-config';
+
+    const loadMembersAndCfg = Promise.all([
+      authFetch(cfgUrl).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+      authFetch(membersUrl).then((res) => (res.ok ? res.json() : [])).catch(() => []),
+    ]).then(([cfgData, data]) => {
+      if (cancelled) return;
+      const activeTiers: TierDef[] =
+        Array.isArray(cfgData?.config?.tiers) && cfgData.config.tiers.length > 0
+          ? cfgData.config.tiers
+          : DEFAULT_TIERS;
+      setTiers(activeTiers);
+
+      if (Array.isArray(data)) {
+        const mapped = data.map((m: any) => {
+          const pts = Number(m.points || 0);
+          const meta = computeMemberTierMeta(pts, activeTiers);
+          return {
+            id: m.id,
+            uid: `#${m.member_id || m.id}`,
+            name: m.customer_name || m.name || 'Member',
+            phone: m.phone || '',
+            email: m.email || '',
+            avatarUrl: m.logo_url || '',
+            initials: String(m.customer_name || m.name || 'M').slice(0, 2).toUpperCase(),
+            tier: meta.tier,
+            tierColor: meta.tierColor,
+            tierBg: meta.tierBg,
+            points: pts,
+            tierCap: meta.tierCap,
+            entryPoints: meta.entryPoints,
+            thresholdPoints: meta.thresholdPoints,
+            isBase: meta.isBase,
+            status: 'NFC Active Node',
+            joinedDate: '2026',
+            syncedTime: 'Synced',
+            visitCount: 1,
+          };
+        });
+        setMembers(mapped);
+        if (mapped.length > 0) {
+          setSelectedMemberId(mapped[0].id);
         }
-      })
-      .catch((err) => {
-        console.error('Error fetching tenant-scoped members:', err);
-        if (!cancelled) setMembers([]);
-      });
+        if (data[0]?.store_name) {
+          setStoreName(data[0].store_name);
+        }
+      } else {
+        setMembers([]);
+      }
+    });
 
     const loadTenant = activeSlug
       ? authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}`)
@@ -105,7 +163,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
           .catch(() => {})
       : Promise.resolve();
 
-    Promise.all([loadMembers, loadTenant]).finally(() => {
+    Promise.all([loadMembersAndCfg, loadTenant]).finally(() => {
       if (!cancelled) setIsLoading(false);
     });
 
@@ -115,8 +173,33 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
   }, [activeSlug, userRole, isSuperAdmin]);
 
   const selectedMember = members.find((m) => m.id === selectedMemberId) || members[0] || null;
-  const vipCount = members.filter((m) => m.tier === 'GOLD VIP' || m.tier === 'PLATINUM').length;
+  const vipCount = members.filter((m) => !m.isBase).length;
+  const baseCount = members.filter((m) => m.isBase).length;
   const totalPointsPool = members.reduce((sum, m) => sum + m.points, 0);
+
+  const loadMemberTransactions = (memberId: string) => {
+    if (!memberId) {
+      setTransactions([]);
+      return;
+    }
+    setIsLoadingTx(true);
+    authFetch(`/api/members/${encodeURIComponent(memberId)}/transactions`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => {
+        if (Array.isArray(rows)) setTransactions(rows);
+        else setTransactions([]);
+      })
+      .catch(() => setTransactions([]))
+      .finally(() => setIsLoadingTx(false));
+  };
+
+  useEffect(() => {
+    if (selectedMember?.id) {
+      loadMemberTransactions(selectedMember.id);
+    } else {
+      setTransactions([]);
+    }
+  }, [selectedMember?.id]);
 
   const handleSelectMember = (id: string) => {
     sounds.click();
@@ -126,7 +209,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
   const triggerNotice = (msg: string) => {
     sounds.chime();
     setNoticeMessage(msg);
-    setTimeout(() => setNoticeMessage(null), 2500);
+    setTimeout(() => setNoticeMessage(null), 3000);
   };
 
   const handleAdjustPoints = async (delta: number) => {
@@ -138,33 +221,10 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
     const targetMemberId = selectedMember.id;
     const prevPoints = selectedMember.points;
 
-    // Optimistically update UI
-    setMembers((prev) =>
-      prev.map((m) => {
-        if (m.id === targetMemberId) {
-          const newPts = Math.max(0, m.points + delta);
-          const tierStr = newPts >= 2000 ? 'PLATINUM' : newPts >= 1000 ? 'GOLD VIP' : 'SILVER';
-          return {
-            ...m,
-            points: newPts,
-            tier: tierStr,
-            tierColor:
-              tierStr === 'PLATINUM'
-                ? 'text-purple-500'
-                : tierStr === 'GOLD VIP'
-                ? 'text-primary'
-                : 'text-on-surface',
-            tierBg:
-              tierStr === 'PLATINUM'
-                ? 'bg-purple-100 text-purple-800'
-                : tierStr === 'GOLD VIP'
-                ? 'bg-primary-fixed text-on-primary-fixed'
-                : 'bg-surface-container-high text-on-surface-variant',
-          };
-        }
-        return m;
-      })
-    );
+    if (prevPoints + delta < 0) {
+      triggerNotice(`Cannot deduct below 0 PTS (current balance: ${prevPoints})`);
+      return;
+    }
 
     try {
       const res = await authFetch(`/api/members/${encodeURIComponent(targetMemberId)}/points`, {
@@ -176,52 +236,135 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
       const data = await res.json().catch(() => ({}));
       if (res.ok && typeof data.newPoints === 'number') {
         const pts = data.newPoints;
-        const tierStr = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
+        const meta = computeMemberTierMeta(pts, tiers);
         setMembers((prev) =>
-          prev.map((m) => {
-            if (m.id === targetMemberId) {
-              return {
-                ...m,
-                points: pts,
-                tier: tierStr,
-                tierColor:
-                  tierStr === 'PLATINUM'
-                    ? 'text-purple-500'
-                    : tierStr === 'GOLD VIP'
-                    ? 'text-primary'
-                    : 'text-on-surface',
-                tierBg:
-                  tierStr === 'PLATINUM'
-                    ? 'bg-purple-100 text-purple-800'
-                    : tierStr === 'GOLD VIP'
-                    ? 'bg-primary-fixed text-on-primary-fixed'
-                    : 'bg-surface-container-high text-on-surface-variant',
-              };
-            }
-            return m;
-          })
+          prev.map((m) =>
+            m.id === targetMemberId
+              ? {
+                  ...m,
+                  points: pts,
+                  tier: meta.tier,
+                  tierColor: meta.tierColor,
+                  tierBg: meta.tierBg,
+                  entryPoints: meta.entryPoints,
+                  thresholdPoints: meta.thresholdPoints,
+                  isBase: meta.isBase,
+                }
+              : m
+          )
         );
+        loadMemberTransactions(targetMemberId);
         triggerNotice(`Points updated: ${pts.toLocaleString()} PTS (Synced to DB)`);
       } else {
-        setMembers((prev) =>
-          prev.map((m) => (m.id === targetMemberId ? { ...m, points: prevPoints } : m))
-        );
         triggerNotice(data.error || 'Failed to update points');
       }
     } catch (err) {
       console.error('Failed to sync points with backend:', err);
-      setMembers((prev) =>
-        prev.map((m) => (m.id === targetMemberId ? { ...m, points: prevPoints } : m))
-      );
       triggerNotice('Error connecting to database');
     }
   };
 
+  const handleOpenEdit = () => {
+    if (!selectedMember) return;
+    setEditName(selectedMember.name);
+    setEditPhone(selectedMember.phone || '');
+    setEditEmail(selectedMember.email || '');
+    setIsEditOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMember || !editName.trim()) return;
+    setIsSavingEdit(true);
+    try {
+      const res = await authFetch(`/api/members/${encodeURIComponent(selectedMember.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim(),
+          phone: editPhone.trim(),
+          email: editEmail.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.id === selectedMember.id
+              ? {
+                  ...m,
+                  name: editName.trim(),
+                  phone: editPhone.trim(),
+                  email: editEmail.trim(),
+                  initials: editName.trim().slice(0, 2).toUpperCase(),
+                }
+              : m
+          )
+        );
+        setIsEditOpen(false);
+        triggerNotice('Member details saved to Neon Postgres');
+      } else {
+        triggerNotice(data.error || 'Failed to save member changes');
+      }
+    } catch {
+      triggerNotice('Error saving member changes');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteMember = async () => {
+    if (!selectedMember) return;
+    const deletedId = selectedMember.id;
+    try {
+      const res = await authFetch(`/api/members/${encodeURIComponent(deletedId)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setMembers((prev) => {
+          const remaining = prev.filter((m) => m.id !== deletedId);
+          setSelectedMemberId(remaining[0]?.id || '');
+          return remaining;
+        });
+        setIsDeleteConfirmOpen(false);
+        triggerNotice('Member removed from store registry');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        triggerNotice(d.error || 'Failed to delete member');
+      }
+    } catch {
+      triggerNotice('Error deleting member');
+    }
+  };
+
+  const handleMemberWalletAction = async (action: 'alert' | 'resend') => {
+    if (!selectedMember) return;
+    sounds.click(1000, 0.02);
+    try {
+      const res = await authFetch(`/api/members/${encodeURIComponent(selectedMember.id)}/send-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (action === 'resend' && data.saveToWalletUrl) {
+          navigator.clipboard?.writeText(data.saveToWalletUrl).catch(() => {});
+        }
+        triggerNotice(data.message || 'Dispatched successfully');
+      } else {
+        triggerNotice(data.error || 'Failed to dispatch alert');
+      }
+    } catch {
+      triggerNotice('Network error contacting wallet service');
+    }
+  };
+
   const handleExportCsv = () => {
-    const header = 'Member ID,Name,Phone,Tier,Points,Store\n';
+    const header = 'Member ID,Name,Phone,Email,Tier,Points,Store\n';
     const rows = members
       .map((m) =>
-        [m.uid, m.name, m.phone || '', m.tier, m.points, storeName]
+        [m.uid, m.name, m.phone || '', m.email || '', m.tier, m.points, storeName]
           .map((v) => `"${String(v).replace(/"/g, '""')}"`)
           .join(',')
       )
@@ -240,10 +383,11 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
     const matchesSearch =
       !searchQuery ||
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.uid.toLowerCase().includes(searchQuery.toLowerCase());
+      m.uid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.phone || '').toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
-    if (filterSegment === 'vip') return m.tier === 'GOLD VIP' || m.tier === 'PLATINUM';
-    if (filterSegment === 'pending') return false;
+    if (filterSegment === 'vip') return !m.isBase;
+    if (filterSegment === 'base') return Boolean(m.isBase);
     return true;
   });
 
@@ -310,15 +454,15 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
           <button
             onClick={() => {
               sounds.click();
-              setFilterSegment('pending');
+              setFilterSegment('base');
             }}
             className={`px-5 py-2 rounded-full font-label-lg text-label-lg transition-all ${
-              filterSegment === 'pending'
+              filterSegment === 'base'
                 ? 'bg-surface-container-lowest text-primary tactile-btn font-semibold'
                 : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            Pending Claims (0)
+            Base Tier ({baseCount})
           </button>
         </div>
       </div>
@@ -672,9 +816,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
             </button>
             <button
-              onClick={() =>
-                activeMember && triggerNotice(`Push lockscreen alert sent to ${activeMember.name}`)
-              }
+              onClick={() => handleMemberWalletAction('alert')}
               disabled={!activeMember}
               className="w-full py-3 px-4 rounded-full bg-surface-container text-on-surface tactile-btn flex items-center justify-between font-label-lg text-label-lg font-semibold hover:text-primary transition-all disabled:opacity-40 disabled:pointer-events-none"
             >
@@ -687,9 +829,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
             </button>
             <button
-              onClick={() =>
-                activeMember && triggerNotice(`Wallet pass link re-sent to ${activeMember.name}`)
-              }
+              onClick={() => handleMemberWalletAction('resend')}
               disabled={!activeMember}
               className="w-full py-3 px-4 rounded-full bg-surface-container text-on-surface tactile-btn flex items-center justify-between font-label-lg text-label-lg font-semibold hover:text-primary transition-all disabled:opacity-40 disabled:pointer-events-none"
             >
@@ -699,6 +839,70 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
               </span>
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
             </button>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleOpenEdit}
+                disabled={!activeMember}
+                className="py-2.5 px-3 rounded-full bg-surface-container text-on-surface tactile-btn flex items-center justify-center gap-1.5 font-label-sm text-xs font-bold hover:text-primary disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[16px]">edit</span>
+                <span>Edit</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDeleteConfirmOpen(true)}
+                disabled={!activeMember}
+                className="py-2.5 px-3 rounded-full bg-red-500/10 text-red-600 tactile-btn flex items-center justify-center gap-1.5 font-label-sm text-xs font-bold hover:bg-red-600 hover:text-white disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[16px]">delete</span>
+                <span>Remove</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Member Points Ledger History */}
+          <div className="bg-surface-container-low rounded-xl p-5 tactile-card flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant font-bold">
+                Points History
+              </span>
+              <span className="text-[11px] font-mono text-outline tabular-nums">
+                {transactions.length} entries
+              </span>
+            </div>
+            {isLoadingTx ? (
+              <p className="text-xs text-outline py-3">Loading ledger...</p>
+            ) : transactions.length === 0 ? (
+              <p className="text-xs text-outline py-3">No transactions recorded yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {transactions.slice(0, 8).map((tx) => {
+                  const amt = Number(tx.change_amount || 0);
+                  return (
+                    <div
+                      key={tx.id}
+                      className="p-2.5 rounded-lg bg-surface-container flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-on-surface truncate">{tx.reason}</p>
+                        <p className="text-[10px] text-outline">
+                          {tx.created_at ? new Date(tx.created_at).toLocaleDateString() : 'Recent'}
+                        </p>
+                      </div>
+                      <span
+                        className={`font-mono font-bold shrink-0 tabular-nums ${
+                          amt >= 0 ? 'text-emerald-600' : 'text-red-600'
+                        }`}
+                      >
+                        {amt >= 0 ? `+${amt}` : amt}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -728,7 +932,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
               <span className="font-label-sm text-label-sm uppercase font-bold text-on-surface-variant block">
                 Active Passes
               </span>
-              <span className="font-headline-sm text-headline-sm font-bold text-on-surface">
+              <span className="font-headline-sm text-headline-sm font-bold text-on-surface tabular-nums">
                 {members.length}
               </span>
             </div>
@@ -741,7 +945,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
               <span className="font-label-sm text-label-sm uppercase font-bold text-on-surface-variant block">
                 VIP Cohort
               </span>
-              <span className="font-headline-sm text-headline-sm font-bold text-primary">
+              <span className="font-headline-sm text-headline-sm font-bold text-primary tabular-nums">
                 {vipCount}
               </span>
             </div>
@@ -754,7 +958,7 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
               <span className="font-label-sm text-label-sm uppercase font-bold text-on-surface-variant block">
                 Total Points
               </span>
-              <span className="font-headline-sm text-headline-sm font-bold text-on-surface">
+              <span className="font-headline-sm text-headline-sm font-bold text-on-surface tabular-nums">
                 {totalPointsPool.toLocaleString()}
               </span>
             </div>
@@ -769,6 +973,94 @@ export const CustomersCRMView: React.FC<CustomersCRMViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Edit Member Modal */}
+      {isEditOpen && activeMember && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <form
+            onSubmit={handleSaveEdit}
+            className="bg-surface-container-lowest rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4"
+          >
+            <h3 className="font-headline-sm text-lg font-bold text-on-surface">
+              Edit Member ({activeMember.uid})
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold uppercase text-outline block mb-1">Full Name</label>
+                <input
+                  required
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full h-11 px-3.5 rounded-xl bg-surface tactile-deboss text-sm text-on-surface focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase text-outline block mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className="w-full h-11 px-3.5 rounded-xl bg-surface tactile-deboss text-sm text-on-surface focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase text-outline block mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full h-11 px-3.5 rounded-xl bg-surface tactile-deboss text-sm text-on-surface focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEditOpen(false)}
+                className="px-4 py-2 rounded-full bg-surface-container text-sm font-bold text-on-surface-variant"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingEdit}
+                className="px-5 py-2 rounded-full bg-primary-container text-on-primary text-sm font-bold tactile-glow disabled:opacity-50"
+              >
+                {isSavingEdit ? 'Saving...' : 'Save Member'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteConfirmOpen && activeMember && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <h3 className="font-headline-sm text-lg font-bold text-red-600">Remove Member Pass?</h3>
+            <p className="text-sm text-on-surface-variant">
+              This will permanently remove <strong>{activeMember.name}</strong> ({activeMember.uid}) and their transaction history from {storeName}.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                className="px-4 py-2 rounded-full bg-surface-container text-sm font-bold text-on-surface-variant"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMember}
+                className="px-5 py-2 rounded-full bg-red-600 text-white text-sm font-bold"
+              >
+                Remove Member
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notice Toast */}
       {noticeMessage && (

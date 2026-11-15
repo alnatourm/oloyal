@@ -16,35 +16,8 @@ app.use(express.json({ limit: '10mb' }));
 
 // Master Issuer Config (Mutable)
 let MASTER_ISSUER_ID = process.env.ISSUER_ID || '3388000000022258509';
-let SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL || 'id-banlis-wallet@walletcard-514107.iam.gserviceaccount.com';
-let PRIVATE_KEY_PEM = process.env.GOOGLE_PRIVATE_KEY || `-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6SaS1OgaOqT5I
-SXM5Cemrb7hiFMp1dJoJQMVxrlQIX971AcwjWU4Tf/5zPzIzFSENCdw6/yNXvjed
-9sR7PhCcaNgDH+xbTfPO2kgY5H7v5ikCmovjVOEVhG4zDddmaQoics4LLBE/2xRf
-8VRW4RzNklfOC7tgKEysBhvl2Fjo7Yn0gTciLUaIgKqKg/CPBTOkxgoV1R8tx/cF
-SybpSF5eh9y6ynKD42eRtcerlmPCUM9wu9WefbkjzK0kW04+BhOO86kh6LSbuwFF
-0TkhNTXMRL959GK97alQVt0QcP/x7i3REOW0jEcW3YdlR5cRMuvRyzN3J8l09t45
-7N7Ea6fNAgMBAAECggEAJlizdXSw1dwDzJiGBedC+P3B3DrAZEYw0RfKrPiAJssp
-V5Dbpykid8QgqjOHj1lZmNf/RAuyCEVJKJSb5GylubShRp9jJXZZ6ionriwW7yYX
-KgiLJCwcOzQsBQlj3hpgMjAktssG7/iWbJt+S3YCWlS2C12B4Czbf4uwYXNT9fpZ
-bs4N2aoKKGjixik6iqExTkHN2IHFDcJwFY3Fm9N6C34DVA/5kCodUsXFUQ9T/9e3
-54cgc75/UoXhomlbzytv20PlniJccVNBcaNeCR0et3/I+yZmoisVcTH/V03ECmmo
-PB2nP71bZfoeApdH7GOBKzYjHCV+nYz0OY3bXD8BoQKBgQDt/oAV3WOn1SHUvE/k
-SDlAAJFhCQ5OB7O/4DxGcSQbEdTdQQdytwO1EFnQoKNTKxG9FgguRIdJEqIuCmwp
-y9GBhoCwUsPKyTOQs9tu8OA5wAMEuIYu99Cgy5k8PieJBaaBh34VMbdTALs65/hc
-Z34ox2mzax6cFTZywvWbJHnM8QKBgQDIYa+OrCnETZ5dSTeclarUbSTSmiXjHmc4
-hUyajJi0Om7zyOf7T0tvgIgwCCg+q+q8e1cnbzxuPrSOQgC10rlFdbDiZcTkSYkH
-VFtqBtPrnLRWXNRsGpA6Fr7jsp96R0SFJy5Y0enylJkXmCrmXVJ4fPgwtM1V1Aj6Y
-+rA8yCh4nQKBgQCk520UuVvt1K4mW3z37ltMz5fsJnw08P1JfDQHkymzX/2geQiS
-IeF9uiChgEzqubMG05dDh9Q9e53ITQx5QXKfTvUoN5DWl+cU4qqvClQzb6onwTuo
-m6mBYNGCfoaiWLnwklN4mAQwjRcuT8E1NbiixNmmqhiBiek6R4AqyXFj4QKBgFkI
-RlevGTO2hRnP0VzKh0exYv4MLa9XL+fGGn5E4AicOfYpmyFnXw4g3uHwjekiu76Z
-UuUboI8fX1wh6WzgPx+kpj5Bl5UTM0ZFbgSTGhAC5YHF50BNIS4eMxy6ne9XwRMk
-kIw4YKLVepM2yrV5jHQ3PnPK7jp6D9Qq9qlbCdhlAoGAK2ZdVsV8AdME4znLjJj5
-o/lF2S5dMY+QnwUq7fI+E3/mvPawQXVvwBbi0Aqj6qIyHvNuIKosdpGlZTGHfNu0
-IzH0qWvlwSalsBttE3IwYEsQLJbR/UfaE4ZNuGDa6YzCje/P4PIWPtyLlCZFjU+K
-G3DaKXXecVI9vqh/qUibNyM=
------END PRIVATE KEY-----`;
+let SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
+let PRIVATE_KEY_PEM = process.env.GOOGLE_PRIVATE_KEY || '';
 
 // Neon Postgres Client
 const DATABASE_URL = process.env.DATABASE_URL || '';
@@ -114,6 +87,72 @@ function verifyAuthToken(req: Request): AuthContext | null {
 
 function isAdminRole(role?: string): boolean {
   return role === 'super_admin' || role === 'admin';
+}
+
+const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIp(req: Request): string {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function checkRateLimit(bucketKey: string, limit: number, windowMs: number): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  if (rateLimitBuckets.size > 5000) {
+    for (const [k, v] of rateLimitBuckets.entries()) {
+      if (v.resetAt <= now) rateLimitBuckets.delete(k);
+    }
+  }
+  const cur = rateLimitBuckets.get(bucketKey);
+  if (!cur || cur.resetAt <= now) {
+    rateLimitBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+  if (cur.count >= limit) {
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((cur.resetAt - now) / 1000)) };
+  }
+  cur.count += 1;
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+async function resolveRequestAuth(req: Request): Promise<AuthContext | null> {
+  const jwtAuth = verifyAuthToken(req);
+  if (jwtAuth) return jwtAuth;
+
+  const rawHeader = String(req.headers['x-api-key'] || '').trim();
+  const authHeader = String(req.headers.authorization || '').trim();
+  const apiKey =
+    rawHeader ||
+    (authHeader.toLowerCase().startsWith('apikey ') ? authHeader.slice(7).trim() : '');
+
+  if (!apiKey || !apiKey.startsWith('pk_live_') || !sql) return null;
+
+  try {
+    await ensureMigration();
+    const rows = await sql`
+      SELECT id, slug, owner_email, status
+      FROM tenants
+      WHERE api_key = ${apiKey}
+      LIMIT 1;
+    `;
+    if (rows.length === 0) return null;
+    const t = rows[0];
+    const st = String(t.status || 'Active').trim().toLowerCase();
+    if (st === 'suspended' || st === 'rejected' || st === 'pending' || st === 'pending approval') {
+      return null;
+    }
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      role: 'merchant',
+      tenantId: t.id,
+      tenantSlug: t.slug,
+      email: t.owner_email || undefined,
+      iat: now,
+      exp: now + 300,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function hashPassword(password: string): string {
@@ -414,6 +453,170 @@ function signGoogleWalletJwt(
   }
 }
 
+function computeTierFromRules(points: number, tiersInput?: any[]): {
+  name: string;
+  multiplier: number;
+  minPoints: number;
+  nextTierPoints: number;
+  entryPoints: number;
+} {
+  const tiers = Array.isArray(tiersInput) && tiersInput.length > 0 ? tiersInput : defaultTiers();
+  const sorted = [...tiers]
+    .map((t) => ({
+      name: String(t.name || 'Member'),
+      multiplier: Number(t.multiplier || 1),
+      minPoints: Number(t.minPoints || 0),
+    }))
+    .sort((a, b) => a.minPoints - b.minPoints);
+
+  let current = sorted[0];
+  let nextIdx = 1;
+  for (let i = 0; i < sorted.length; i++) {
+    if (points >= sorted[i].minPoints) {
+      current = sorted[i];
+      nextIdx = i + 1;
+    }
+  }
+  const nextTier = sorted[nextIdx];
+  return {
+    name: current.name,
+    multiplier: current.multiplier,
+    minPoints: current.minPoints,
+    entryPoints: current.minPoints,
+    nextTierPoints: nextTier ? nextTier.minPoints : Math.max(current.minPoints + 1000, points),
+  };
+}
+
+async function getStoredGoogleCredentials(): Promise<{
+  issuerId: string;
+  serviceAccountEmail: string;
+  privateKey: string;
+}> {
+  let issuerId = MASTER_ISSUER_ID;
+  let serviceAccountEmail = SERVICE_ACCOUNT_EMAIL;
+  let privateKey = PRIVATE_KEY_PEM || process.env.GOOGLE_PRIVATE_KEY || '';
+
+  if (sql) {
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS platform_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `;
+      const rows = await sql`
+        SELECT key, value FROM platform_settings
+        WHERE key IN ('google_issuer_id', 'google_sa_email', 'google_private_key');
+      `;
+      for (const r of rows) {
+        if (r.key === 'google_issuer_id' && r.value) issuerId = r.value;
+        if (r.key === 'google_sa_email' && r.value) serviceAccountEmail = r.value;
+        if (r.key === 'google_private_key' && r.value) privateKey = r.value;
+      }
+      MASTER_ISSUER_ID = issuerId;
+      SERVICE_ACCOUNT_EMAIL = serviceAccountEmail;
+      if (privateKey) PRIVATE_KEY_PEM = privateKey;
+    } catch {}
+  }
+  return { issuerId, serviceAccountEmail, privateKey };
+}
+
+async function getGoogleOAuthToken(saEmail: string, privateKey: string): Promise<string | null> {
+  try {
+    const keyPem = normalizeWalletPrivateKey(privateKey);
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+    const claim = Buffer.from(
+      JSON.stringify({
+        iss: saEmail,
+        scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
+        aud: 'https://oauth2.googleapis.com/token',
+        iat: now,
+        exp: now + 3600,
+      })
+    ).toString('base64url');
+    const unsigned = `${header}.${claim}`;
+    const keyObj = crypto.createPrivateKey({ key: keyPem, format: 'pem' });
+    const sig = crypto.sign('SHA256', Buffer.from(unsigned), keyObj).toString('base64url');
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: `${unsigned}.${sig}`,
+      }),
+    });
+    if (!tokenRes.ok) return null;
+    const tokenData = (await tokenRes.json().catch(() => ({}))) as any;
+    return tokenData.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function syncGoogleWalletRest(
+  objectId: string,
+  points?: number,
+  message?: { header: string; body: string }
+): Promise<{ synced: boolean; detail: string }> {
+  try {
+    const creds = await getStoredGoogleCredentials();
+    if (!creds.privateKey || !creds.serviceAccountEmail || !objectId) {
+      return { synced: false, detail: 'Wallet private key not configured' };
+    }
+    const accessToken = await getGoogleOAuthToken(creds.serviceAccountEmail, creds.privateKey);
+    if (!accessToken) {
+      return { synced: false, detail: 'OAuth token exchange skipped' };
+    }
+
+    if (typeof points === 'number') {
+      const patchRes = await fetch(
+        `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${encodeURIComponent(objectId)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            loyaltyPoints: { label: 'Points', balance: { int: points } },
+          }),
+        }
+      );
+      if (!patchRes.ok) {
+        return { synced: false, detail: `Wallet object not yet saved by user (${patchRes.status})` };
+      }
+    }
+
+    if (message) {
+      const msgRes = await fetch(
+        `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${encodeURIComponent(objectId)}/addMessage`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: {
+              header: message.header,
+              body: message.body,
+              messageType: 'TEXT_AND_NOTIFY',
+            },
+          }),
+        }
+      );
+      return { synced: msgRes.ok, detail: msgRes.ok ? 'Google Wallet message pushed' : `Status ${msgRes.status}` };
+    }
+
+    return { synced: true, detail: 'Google Wallet balance synchronized' };
+  } catch (err: any) {
+    return { synced: false, detail: err?.message || 'Wallet sync unavailable' };
+  }
+}
+
 // GET /api/auth/me - Validate active signed session token
 app.get('/api/auth/me', (req: Request, res: Response) => {
   const auth = verifyAuthToken(req);
@@ -498,36 +701,256 @@ app.get('/api/health', async (_req: Request, res: Response) => {
   });
 });
 
-// GET /api/credentials (Super Admin only)
-app.get('/api/credentials', (req: Request, res: Response) => {
+// GET /api/credentials (Super Admin only - persisted in platform_settings)
+app.get('/api/credentials', async (req: Request, res: Response) => {
   const auth = verifyAuthToken(req);
   if (!auth || !isAdminRole(auth.role)) {
     return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
   }
+  const creds = await getStoredGoogleCredentials();
   res.json({
-    issuerId: MASTER_ISSUER_ID,
-    serviceAccountEmail: SERVICE_ACCOUNT_EMAIL,
-    hasPrivateKey: !!PRIVATE_KEY_PEM,
+    issuerId: creds.issuerId,
+    serviceAccountEmail: creds.serviceAccountEmail,
+    hasPrivateKey: Boolean(creds.privateKey),
   });
 });
 
-// POST /api/credentials - Update Master Credentials (Super Admin only)
-app.post('/api/credentials', (req: Request, res: Response) => {
+// POST /api/credentials - Update & Persist Master Credentials (Super Admin only)
+app.post('/api/credentials', async (req: Request, res: Response) => {
   const auth = verifyAuthToken(req);
   if (!auth || !isAdminRole(auth.role)) {
     return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
   }
-  const { issuerId, serviceAccountEmail, privateKey } = req.body;
-  if (issuerId) MASTER_ISSUER_ID = issuerId.trim();
-  if (serviceAccountEmail) SERVICE_ACCOUNT_EMAIL = serviceAccountEmail.trim();
-  if (privateKey) PRIVATE_KEY_PEM = privateKey.trim();
+  const { issuerId, serviceAccountEmail, privateKey } = req.body || {};
+  if (issuerId) MASTER_ISSUER_ID = String(issuerId).trim();
+  if (serviceAccountEmail) SERVICE_ACCOUNT_EMAIL = String(serviceAccountEmail).trim();
+  if (privateKey) PRIVATE_KEY_PEM = String(privateKey).trim();
+
+  if (sql) {
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS platform_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `;
+      if (issuerId) {
+        await sql`
+          INSERT INTO platform_settings (key, value, updated_at)
+          VALUES ('google_issuer_id', ${MASTER_ISSUER_ID}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+        `;
+      }
+      if (serviceAccountEmail) {
+        await sql`
+          INSERT INTO platform_settings (key, value, updated_at)
+          VALUES ('google_sa_email', ${SERVICE_ACCOUNT_EMAIL}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+        `;
+      }
+      if (privateKey) {
+        await sql`
+          INSERT INTO platform_settings (key, value, updated_at)
+          VALUES ('google_private_key', ${PRIVATE_KEY_PEM}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+        `;
+      }
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to persist credentials' });
+    }
+  }
 
   res.json({
     success: true,
     issuerId: MASTER_ISSUER_ID,
     serviceAccountEmail: SERVICE_ACCOUNT_EMAIL,
-    hasPrivateKey: !!PRIVATE_KEY_PEM,
+    hasPrivateKey: !!(PRIVATE_KEY_PEM || process.env.GOOGLE_PRIVATE_KEY),
   });
+});
+
+// Public non-PII store lookup for customer self-enrollment links (?store=slug)
+app.get('/api/public/tenants/:slug', async (req: Request, res: Response) => {
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  if (!slug) {
+    return res.status(400).json({ error: 'Store slug is required' });
+  }
+
+  try {
+    await ensureProgramTables();
+    const rows = await sql`
+      SELECT id, slug, name, logo, color, archetype, status
+      FROM tenants
+      WHERE slug = ${slug} OR id = ${slug}
+      LIMIT 1;
+    `;
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+    const t = rows[0];
+    const st = String(t.status || 'Active').toLowerCase();
+    if (st === 'suspended' || st === 'rejected') {
+      return res.status(403).json({ error: 'This store loyalty program is currently inactive' });
+    }
+
+    const cfgRows = await sql`
+      SELECT program_name, card_title, barcode_mode, welcome_active, welcome_grant, tiers_json, custom_logo_url
+      FROM program_configs WHERE tenant_id = ${t.id} LIMIT 1;
+    `;
+    const cfg = cfgRows[0];
+
+    return res.status(200).json({
+      slug: t.slug,
+      name: t.name,
+      brandColor: t.color || '#ff5722',
+      logoUrl: cfg?.custom_logo_url || t.logo || '',
+      archetype: t.archetype || 'loyalty',
+      programName: cfg?.program_name || `${t.name} Club`,
+      cardTitle: cfg?.card_title || `${t.name} Membership Card`,
+      barcodeMode: cfg?.barcode_mode === 'qr' ? 'qr' : 'barcode',
+      welcomeActive: cfg ? Boolean(cfg.welcome_active) : true,
+      welcomeGrant: cfg ? Number(cfg.welcome_grant ?? 100) : 100,
+      tiers: cfg && Array.isArray(cfg.tiers_json) && cfg.tiers_json.length > 0 ? cfg.tiers_json : defaultTiers(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to load store enrollment info' });
+  }
+});
+
+// Self-serve Merchant Password Reset (rate-limited, never leaks reset codes in API response)
+app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email) {
+    return res.status(400).json({ error: 'Account email is required' });
+  }
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(`forgot:${ip}:${email}`, 5, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    return res.status(429).json({ error: `Too many reset requests. Please try again in ${rl.retryAfterSec}s.` });
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    return res.status(503).json({
+      error: 'Password reset email delivery is not configured (RESEND_API_KEY missing). Contact your platform administrator.',
+    });
+  }
+
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS platform_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+    const rows = await sql`SELECT id, name, owner_email FROM tenants WHERE LOWER(owner_email) = ${email} LIMIT 1;`;
+    if (rows.length > 0) {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const expiresAt = Date.now() + 15 * 60 * 1000;
+      const key = `pw_reset_${email}`;
+      await sql`
+        INSERT INTO platform_settings (key, value, updated_at)
+        VALUES (${key}, ${JSON.stringify({ code, expiresAt, attempts: 0 })}, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+      `;
+
+      const emailRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'PassLoyal OS <onboarding@resend.dev>',
+          to: [email],
+          subject: `PassLoyal Password Reset Code: ${code}`,
+          text: `Your PassLoyal store password reset code is ${code}. It expires in 15 minutes.`,
+        }),
+      });
+      if (!emailRes.ok) {
+        await sql`DELETE FROM platform_settings WHERE key = ${key};`.catch(() => {});
+        return res.status(502).json({ error: 'Unable to send verification email at this time. Please retry shortly.' });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      emailSent: true,
+      message: 'If an active merchant account exists for that email, a 6-digit verification code has been sent.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to initiate password reset' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const code = String(req.body?.code || '').trim();
+  const newPassword = String(req.body?.newPassword || '').trim();
+
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(`reset:${ip}:${email}`, 5, 15 * 60 * 1000);
+  if (!rl.allowed) {
+    return res.status(429).json({ error: `Too many reset attempts. Please try again in ${rl.retryAfterSec}s.` });
+  }
+
+  if (!email || !code || newPassword.length < 8) {
+    return res.status(400).json({ error: 'Valid email, 6-digit code, and 8+ char password are required' });
+  }
+
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  try {
+    const key = `pw_reset_${email}`;
+    const rows = await sql`SELECT value FROM platform_settings WHERE key = ${key} LIMIT 1;`;
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired reset code' });
+    }
+    const parsed = JSON.parse(rows[0].value);
+    if (Date.now() > Number(parsed.expiresAt || 0)) {
+      await sql`DELETE FROM platform_settings WHERE key = ${key};`;
+      return res.status(400).json({ error: 'Reset code has expired. Please request a new one.' });
+    }
+    if (parsed.code !== code) {
+      const nextAttempts = Number(parsed.attempts || 0) + 1;
+      if (nextAttempts >= 5) {
+        await sql`DELETE FROM platform_settings WHERE key = ${key};`;
+        return res.status(400).json({ error: 'Too many invalid code attempts. Please request a new reset code.' });
+      }
+      await sql`
+        UPDATE platform_settings
+        SET value = ${JSON.stringify({ ...parsed, attempts: nextAttempts })}, updated_at = NOW()
+        WHERE key = ${key};
+      `;
+      return res.status(400).json({ error: 'Invalid or expired reset code' });
+    }
+
+    const updated = await sql`
+      UPDATE tenants
+      SET password_hash = crypt(${newPassword}, gen_salt('bf'))
+      WHERE LOWER(owner_email) = ${email}
+      RETURNING id, slug;
+    `;
+    await sql`DELETE FROM platform_settings WHERE key = ${key};`;
+    if (updated.length === 0) {
+      return res.status(404).json({ error: 'Merchant account not found' });
+    }
+    return res.status(200).json({ success: true, message: 'Password reset successfully. You can now sign in.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to reset password' });
+  }
 });
 
 // GET /api/tenants - Merchants strictly see only their own tenant; Super Admin sees all / filtered
@@ -544,51 +967,52 @@ app.get('/api/tenants', async (req: Request, res: Response) => {
   const statusParam = typeof req.query?.status === 'string' ? req.query.status.trim().toLowerCase() : '';
 
   try {
+    await ensureProgramTables();
     let rows: any[];
     if (!isAdminRole(auth.role)) {
       rows = await sql`
         SELECT 
           t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at,
           COUNT(m.id)::int as pass_count
         FROM tenants t
         LEFT JOIN members m ON m.tenant_id = t.id
         WHERE t.id = ${auth.tenantId}
-        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at;
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at;
       `;
     } else if (statusParam === 'pending' || statusParam === 'pending approval') {
       rows = await sql`
         SELECT 
           t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at,
           COUNT(m.id)::int as pass_count
         FROM tenants t
         LEFT JOIN members m ON m.tenant_id = t.id
         WHERE LOWER(COALESCE(t.status, '')) IN ('pending', 'pending approval')
-        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at
         ORDER BY t.created_at DESC NULLS LAST, t.id DESC;
       `;
     } else if (statusParam) {
       rows = await sql`
         SELECT 
           t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at,
           COUNT(m.id)::int as pass_count
         FROM tenants t
         LEFT JOIN members m ON m.tenant_id = t.id
         WHERE LOWER(COALESCE(t.status, '')) = ${statusParam}
-        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at
         ORDER BY t.id;
       `;
     } else {
       rows = await sql`
         SELECT 
           t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+          t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at,
           COUNT(m.id)::int as pass_count
         FROM tenants t
         LEFT JOIN members m ON m.tenant_id = t.id
-        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+        GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at
         ORDER BY t.id;
       `;
     }
@@ -608,6 +1032,7 @@ app.get('/api/tenants', async (req: Request, res: Response) => {
       passLimit: Number(r.pass_limit || (r.plan === 'scale' ? 50000 : r.plan === 'starter' ? 500 : 5000)),
       passCount: Number(r.pass_count || 0),
       status: r.status || 'Active',
+      apiKey: r.api_key || `pk_live_${String(r.slug || 'store').replace(/[^a-z0-9]+/gi, '_')}`,
       createdAt: r.created_at || new Date().toISOString(),
     }));
     return res.json(mapped);
@@ -767,6 +1192,11 @@ app.post('/api/login', async (req: Request, res: Response) => {
 
   if (!userIdentifier || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const rl = checkRateLimit(`login:${getClientIp(req)}:${userIdentifier}`, 15, 5 * 60 * 1000);
+  if (!rl.allowed) {
+    return res.status(429).json({ error: `Too many sign-in attempts. Please wait ${rl.retryAfterSec}s before trying again.` });
   }
 
   // 1. FIRST check Super Admin credentials via environment variables
@@ -936,9 +1366,9 @@ async function fetchScopedMembers(auth: AuthContext, requestedSlug?: string) {
   `;
 }
 
-// GET /api/members - Strictly filters WHERE tenant_id = auth.tenantId (query param ignored for merchants)
+// GET /api/members - Strictly filters WHERE tenant_id = auth.tenantId (Bearer or POS x-api-key)
 app.get('/api/members', async (req: Request, res: Response) => {
-  const auth = verifyAuthToken(req);
+  const auth = await resolveRequestAuth(req);
   if (!auth) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -958,9 +1388,9 @@ app.get('/api/members', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/members/:id - Strictly enforces tenant_id = auth tenant
+// GET /api/members/:id - Strictly enforces tenant_id = auth tenant (Bearer or POS x-api-key)
 app.get('/api/members/:id', async (req: Request, res: Response) => {
-  const auth = verifyAuthToken(req);
+  const auth = await resolveRequestAuth(req);
   if (!auth) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -1043,29 +1473,30 @@ app.get('/api/tenants/:slug', async (req: Request, res: Response) => {
   }
 
   try {
+    await ensureProgramTables();
     const rows = !isAdminRole(auth.role)
       ? await sql`
           SELECT 
             t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-            t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+            t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at,
             COUNT(m.id)::int as pass_count,
             COALESCE(SUM(m.points)::int, 0) as total_points
           FROM tenants t
           LEFT JOIN members m ON m.tenant_id = t.id
           WHERE t.id = ${auth.tenantId}
-          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at
           LIMIT 1;
         `
       : await sql`
           SELECT 
             t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id,
-            t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at,
+            t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at,
             COUNT(m.id)::int as pass_count,
             COALESCE(SUM(m.points)::int, 0) as total_points
           FROM tenants t
           LEFT JOIN members m ON m.tenant_id = t.id
           WHERE t.slug = ${slug} OR t.id = ${slug}
-          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.created_at
+          GROUP BY t.id, t.slug, t.name, t.logo, t.color, t.archetype, t.class_id, t.issuer_id, t.owner_name, t.owner_email, t.status, t.plan, t.pass_limit, t.api_key, t.created_at
           LIMIT 1;
         `;
 
@@ -1087,6 +1518,7 @@ app.get('/api/tenants/:slug', async (req: Request, res: Response) => {
         passCount: Number(r.pass_count || 0),
         totalPoints: Number(r.total_points || 0),
         status: r.status || 'Active',
+        apiKey: r.api_key || `pk_live_${String(r.slug || 'store').replace(/[^a-z0-9]+/gi, '_')}`,
         createdAt: r.created_at || new Date().toISOString(),
       });
     }
@@ -1135,19 +1567,21 @@ async function updateTenantScoped(auth: AuthContext, requestedTarget: string, bo
     return res.status(403).json({ error: 'Forbidden: cannot modify another store tenant' });
   }
 
-  const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail, password } = body || {};
+  const { name, logoUrl, brandColor, archetype, status, plan, passLimit, pass_limit, ownerName, ownerEmail, password, regenerateKey } = body || {};
   const safeStatus = isSuper ? status || null : null;
   const safePlan = isSuper ? plan || null : null;
   const computedLimit = isSuper
     ? passLimit || pass_limit || (plan === 'scale' ? 50000 : plan === 'starter' ? 500 : plan === 'growth' ? 5000 : null)
     : null;
   const rawPwd = password ? String(password).trim() : '';
+  const nextApiKey = regenerateKey ? `pk_live_${crypto.randomBytes(12).toString('hex')}` : null;
 
   if (rawPwd && rawPwd.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
 
   try {
+    await ensureProgramTables();
     const rows = isSuper
       ? rawPwd
         ? await sql`
@@ -1162,9 +1596,10 @@ async function updateTenantScoped(auth: AuthContext, requestedTarget: string, bo
               pass_limit = COALESCE(${computedLimit}, pass_limit),
               owner_name = COALESCE(${ownerName || null}, owner_name),
               owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email),
+              api_key = COALESCE(${nextApiKey}, api_key),
               password_hash = crypt(${rawPwd}, gen_salt('bf'))
             WHERE slug = ${requestedTarget} OR id = ${requestedTarget}
-            RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
+            RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, api_key, owner_name, owner_email;
           `
         : await sql`
             UPDATE tenants
@@ -1177,9 +1612,10 @@ async function updateTenantScoped(auth: AuthContext, requestedTarget: string, bo
               plan = COALESCE(${safePlan}, plan),
               pass_limit = COALESCE(${computedLimit}, pass_limit),
               owner_name = COALESCE(${ownerName || null}, owner_name),
-              owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email)
+              owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email),
+              api_key = COALESCE(${nextApiKey}, api_key)
             WHERE slug = ${requestedTarget} OR id = ${requestedTarget}
-            RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
+            RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, api_key, owner_name, owner_email;
           `
       : rawPwd
       ? await sql`
@@ -1191,9 +1627,10 @@ async function updateTenantScoped(auth: AuthContext, requestedTarget: string, bo
             archetype = COALESCE(${archetype || null}, archetype),
             owner_name = COALESCE(${ownerName || null}, owner_name),
             owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email),
+            api_key = COALESCE(${nextApiKey}, api_key),
             password_hash = crypt(${rawPwd}, gen_salt('bf'))
           WHERE id = ${auth.tenantId}
-          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
+          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, api_key, owner_name, owner_email;
         `
       : await sql`
           UPDATE tenants
@@ -1203,13 +1640,19 @@ async function updateTenantScoped(auth: AuthContext, requestedTarget: string, bo
             color = COALESCE(${brandColor || null}, color),
             archetype = COALESCE(${archetype || null}, archetype),
             owner_name = COALESCE(${ownerName || null}, owner_name),
-            owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email)
+            owner_email = COALESCE(${ownerEmail ? String(ownerEmail).trim().toLowerCase() : null}, owner_email),
+            api_key = COALESCE(${nextApiKey}, api_key)
           WHERE id = ${auth.tenantId}
-          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, owner_name, owner_email;
+          RETURNING id, slug, name, logo, color, archetype, class_id, issuer_id, status, plan, pass_limit, api_key, owner_name, owner_email;
         `;
 
     if (rows.length > 0) {
       const r = rows[0];
+      if (isSuper && safePlan) {
+        try {
+          await sql`DELETE FROM platform_settings WHERE key = ${`upgrade_req_${r.id}`};`;
+        } catch {}
+      }
       return res.json({
         success: true,
         tenant: {
@@ -1223,6 +1666,7 @@ async function updateTenantScoped(auth: AuthContext, requestedTarget: string, bo
           status: r.status,
           plan: r.plan,
           passLimit: r.pass_limit,
+          apiKey: r.api_key || `pk_live_${r.slug}`,
           ownerName: r.owner_name,
           ownerEmail: r.owner_email,
         },
@@ -1439,6 +1883,203 @@ app.delete('/api/tenants/:slug', async (req: Request, res: Response) => {
   return res.status(500).json({ error: 'Database not configured' });
 });
 
+// PATCH /api/members/:id - Edit member info (tenant-isolated)
+app.patch('/api/members/:id', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  const rawId = req.params.id;
+  const { name, email, phone } = req.body || {};
+  try {
+    const updated = !isAdminRole(auth.role)
+      ? await sql`
+          UPDATE members
+          SET
+            name = COALESCE(${name ? String(name).trim() : null}, name),
+            email = COALESCE(${email !== undefined ? String(email).trim() : null}, email),
+            phone = COALESCE(${phone !== undefined ? String(phone).trim() : null}, phone)
+          WHERE (id = ${rawId} OR member_id = ${rawId}) AND tenant_id = ${auth.tenantId}
+          RETURNING *;
+        `
+      : await sql`
+          UPDATE members
+          SET
+            name = COALESCE(${name ? String(name).trim() : null}, name),
+            email = COALESCE(${email !== undefined ? String(email).trim() : null}, email),
+            phone = COALESCE(${phone !== undefined ? String(phone).trim() : null}, phone)
+          WHERE id = ${rawId} OR member_id = ${rawId}
+          RETURNING *;
+        `;
+    if (updated.length === 0) {
+      return res.status(404).json({ error: 'Member not found for active store' });
+    }
+    return res.status(200).json({ success: true, member: updated[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to update member' });
+  }
+});
+
+// DELETE /api/members/:id - Remove member & ledger entries (tenant-isolated)
+app.delete('/api/members/:id', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  const rawId = req.params.id;
+  try {
+    const found = !isAdminRole(auth.role)
+      ? await sql`SELECT id FROM members WHERE (id = ${rawId} OR member_id = ${rawId}) AND tenant_id = ${auth.tenantId} LIMIT 1;`
+      : await sql`SELECT id FROM members WHERE id = ${rawId} OR member_id = ${rawId} LIMIT 1;`;
+    if (found.length === 0) {
+      return res.status(404).json({ error: 'Member not found for active store' });
+    }
+    const targetId = found[0].id;
+    try {
+      await sql`DELETE FROM point_transactions WHERE member_id = ${targetId};`;
+    } catch {}
+    await sql`DELETE FROM members WHERE id = ${targetId};`;
+    return res.status(200).json({ success: true, id: targetId });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to delete member' });
+  }
+});
+
+// GET /api/members/:id/transactions - Point history ledger (tenant-isolated, Bearer or POS x-api-key)
+app.get('/api/members/:id/transactions', async (req: Request, res: Response) => {
+  const auth = await resolveRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  const rawId = req.params.id;
+  try {
+    const memberRows = !isAdminRole(auth.role)
+      ? await sql`SELECT id FROM members WHERE (id = ${rawId} OR member_id = ${rawId}) AND tenant_id = ${auth.tenantId} LIMIT 1;`
+      : await sql`SELECT id FROM members WHERE id = ${rawId} OR member_id = ${rawId} LIMIT 1;`;
+    if (memberRows.length === 0) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    const txRows = await sql`
+      SELECT id, member_id, change_amount, reason, created_at
+      FROM point_transactions
+      WHERE member_id = ${memberRows[0].id}
+      ORDER BY created_at DESC NULLS LAST, id DESC
+      LIMIT 50;
+    `.catch(() => []);
+    return res.status(200).json(txRows);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to load transactions' });
+  }
+});
+
+// POST /api/members/:id/send-alert - Push Wallet Alert or Resend Wallet Pass Link
+app.post('/api/members/:id/send-alert', async (req: Request, res: Response) => {
+  const auth = await resolveRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  const rawId = req.params.id;
+  const action = String(req.body?.action || 'alert');
+  try {
+    const rows = !isAdminRole(auth.role)
+      ? await sql`
+          SELECT m.*, t.name as store_name, t.slug as store_slug, t.class_id, t.color, t.logo
+          FROM members m JOIN tenants t ON m.tenant_id = t.id
+          WHERE (m.id = ${rawId} OR m.member_id = ${rawId}) AND m.tenant_id = ${auth.tenantId} LIMIT 1;
+        `
+      : await sql`
+          SELECT m.*, t.name as store_name, t.slug as store_slug, t.class_id, t.color, t.logo
+          FROM members m JOIN tenants t ON m.tenant_id = t.id
+          WHERE m.id = ${rawId} OR m.member_id = ${rawId} LIMIT 1;
+        `;
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Member not found for active store' });
+    }
+    const m = rows[0];
+    const title = String(req.body?.title || `${m.store_name} Reward Update`).slice(0, 60);
+    const bodyText = String(req.body?.message || `You have ${m.points} PTS ready at ${m.store_name}!`).slice(0, 140);
+
+    const restResult = m.google_object_id
+      ? await syncGoogleWalletRest(m.google_object_id, Number(m.points || 0), { header: title, body: bodyText })
+      : { synced: false, detail: 'No Google object ID' };
+
+    let saveToWalletUrl: string | null = null;
+    try {
+      const creds = await getStoredGoogleCredentials();
+      const requestOrigins: string[] = [];
+      if (req.headers.origin) requestOrigins.push(String(req.headers.origin));
+      const signed = signGoogleWalletJwt(
+        {
+          loyaltyClasses: [
+            {
+              id: m.class_id,
+              issuerName: m.store_name,
+              programName: `${m.store_name} Rewards`,
+              hexBackgroundColor: m.color || '#ff5722',
+              reviewStatus: 'UNDER_REVIEW',
+            },
+          ],
+          loyaltyObjects: [
+            {
+              id: m.google_object_id,
+              classId: m.class_id,
+              state: 'ACTIVE',
+              accountId: m.member_id,
+              accountName: m.name,
+              loyaltyPoints: { label: 'Points', balance: { int: Number(m.points || 0) } },
+            },
+          ],
+        },
+        creds.serviceAccountEmail,
+        creds.privateKey,
+        requestOrigins
+      );
+      saveToWalletUrl = `https://pay.google.com/gp/v/save/${signed}`;
+    } catch {}
+
+    let emailSent = false;
+    if (action === 'resend' && m.email && process.env.RESEND_API_KEY && saveToWalletUrl) {
+      try {
+        const er = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: process.env.RESEND_FROM || 'PassLoyal OS <onboarding@resend.dev>',
+            to: [m.email],
+            subject: `Your ${m.store_name} Google Wallet Pass`,
+            text: `Hi ${m.name}, save your loyalty card to Google Wallet here: ${saveToWalletUrl}`,
+          }),
+        });
+        emailSent = er.ok;
+      } catch {}
+    }
+
+    return res.status(200).json({
+      success: true,
+      action,
+      walletSynced: restResult.synced,
+      walletDetail: restResult.detail,
+      emailSent,
+      saveToWalletUrl,
+      message: action === 'resend'
+        ? emailSent
+          ? `Wallet pass invite emailed to ${m.email}`
+          : saveToWalletUrl
+          ? `Wallet save link generated for ${m.name}`
+          : `Prepared wallet pass link for ${m.name}`
+        : restResult.synced
+        ? `Lockscreen alert pushed to ${m.name}'s Google Wallet pass`
+        : `Alert queued for ${m.name} (${restResult.detail})`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to dispatch member alert' });
+  }
+});
+
 // Shared member enrollment handler
 async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Response) {
   const { name, email, phone } = req.body || {};
@@ -1449,9 +2090,24 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
     return res.status(500).json({ error: 'Database not configured' });
   }
 
+  // Enforce SaaS pass_limit for this tenant
+  try {
+    const countRows = await sql`SELECT COUNT(*)::int AS cnt FROM members WHERE tenant_id = ${tenant.id};`;
+    const currentCount = Number(countRows[0]?.cnt || 0);
+    const planLimit = Number(
+      tenant.pass_limit || (tenant.plan === 'scale' ? 50000 : tenant.plan === 'starter' ? 500 : 5000)
+    );
+    if (currentCount >= planLimit) {
+      return res.status(403).json({
+        error: `Plan pass limit reached (${currentCount}/${planLimit}). Upgrade plan in Billing to issue more cards.`,
+      });
+    }
+  } catch {}
+
   const memberIdCode = `PL-${Math.floor(100000 + Math.random() * 900000)}`;
   const uuid = `mem-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-  const objectId = `${MASTER_ISSUER_ID}.customer_${memberIdCode.replace(/[^a-zA-Z0-9_.]/g, '')}_obj`;
+  const creds = await getStoredGoogleCredentials();
+  const objectId = `${creds.issuerId || MASTER_ISSUER_ID}.customer_${memberIdCode.replace(/[^a-zA-Z0-9_.]/g, '')}_obj`;
   const memberName = String(name).trim();
   const memberPhone = phone ? String(phone).trim() : '';
   const memberEmail = email ? String(email).trim() : '';
@@ -1459,10 +2115,12 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
   let welcomePoints = 100;
   let customProgramName = `${tenant.name} Loyalty`;
   let barcodeMode: 'barcode' | 'qr' = 'barcode';
+  let customLogoUrl = '';
+  let configuredTiers = defaultTiers();
   try {
     await ensureProgramTables();
     const cfgRows = await sql`
-      SELECT program_name, welcome_active, welcome_grant, barcode_mode
+      SELECT program_name, welcome_active, welcome_grant, barcode_mode, custom_logo_url, tiers_json
       FROM program_configs
       WHERE tenant_id = ${tenant.id}
       LIMIT 1;
@@ -1471,6 +2129,10 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
       if (cfgRows[0].program_name) customProgramName = cfgRows[0].program_name;
       welcomePoints = cfgRows[0].welcome_active ? Number(cfgRows[0].welcome_grant ?? 100) : 0;
       if (cfgRows[0].barcode_mode === 'qr') barcodeMode = 'qr';
+      if (cfgRows[0].custom_logo_url) customLogoUrl = cfgRows[0].custom_logo_url;
+      if (Array.isArray(cfgRows[0].tiers_json) && cfgRows[0].tiers_json.length > 0) {
+        configuredTiers = cfgRows[0].tiers_json;
+      }
     }
   } catch {}
 
@@ -1520,14 +2182,30 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
     google_object_id: objectId,
   };
 
+  const resolvedLogo = customLogoUrl || tenant.logo || '';
   const logoUri =
-    tenant.logo &&
-    tenant.logo.startsWith('http') &&
-    !tenant.logo.includes('googleusercontent.com/aida-public/')
-      ? tenant.logo
+    resolvedLogo &&
+    resolvedLogo.startsWith('http') &&
+    !resolvedLogo.includes('googleusercontent.com/aida-public/')
+      ? resolvedLogo
       : 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop';
 
-  const loyaltyClass = {
+  let geoLocations: Array<{ latitude: number; longitude: number }> = [];
+  try {
+    await ensureGeoCampaignsTable();
+    const locRows = await sql`
+      SELECT venue_lat, venue_lng
+      FROM geo_campaigns
+      WHERE tenant_id = ${tenant.id} AND venue_lat IS NOT NULL AND venue_lng IS NOT NULL AND status = 'Active'
+      ORDER BY created_at DESC
+      LIMIT 5;
+    `;
+    geoLocations = locRows
+      .filter((r: any) => typeof r.venue_lat === 'number' && typeof r.venue_lng === 'number')
+      .map((r: any) => ({ latitude: Number(r.venue_lat), longitude: Number(r.venue_lng) }));
+  } catch {}
+
+  const loyaltyClass: Record<string, any> = {
     id: tenant.class_id,
     issuerName: tenant.name,
     programName: customProgramName,
@@ -1541,6 +2219,7 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
     hexBackgroundColor: tenant.color || '#ff5722',
     accountNameLabel: 'Member',
     accountIdLabel: 'Member ID',
+    ...(geoLocations.length > 0 ? { locations: geoLocations } : {}),
   };
 
   const loyaltyObject = {
@@ -1573,14 +2252,16 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
   try {
     const signedJwtToken = signGoogleWalletJwt(
       { loyaltyClasses: [loyaltyClass], loyaltyObjects: [loyaltyObject] },
-      SERVICE_ACCOUNT_EMAIL,
-      PRIVATE_KEY_PEM || process.env.GOOGLE_PRIVATE_KEY,
+      creds.serviceAccountEmail,
+      creds.privateKey,
       requestOrigins
     );
     saveToWalletUrl = `https://pay.google.com/gp/v/save/${signedJwtToken}`;
   } catch (jwtErr: any) {
     console.warn('[Enrollment JWT Warning]:', jwtErr?.message || 'Google Wallet key unavailable');
   }
+
+  const tierInfo = computeTierFromRules(welcomePoints, configuredTiers);
 
   return res.status(201).json({
     success: true,
@@ -1593,7 +2274,7 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
       email: memberEmail,
       phone: memberPhone,
       points: welcomePoints,
-      tier: welcomePoints >= 2000 ? 'PLATINUM' : welcomePoints >= 1000 ? 'GOLD VIP' : 'SILVER',
+      tier: tierInfo.name,
       jwtUrl: saveToWalletUrl,
       syncedAt: new Date().toISOString(),
     },
@@ -1606,14 +2287,14 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
       slug: tenant.slug,
       name: tenant.name,
       brandColor: tenant.color,
-      logoUrl: tenant.logo,
+      logoUrl: resolvedLogo,
     },
   });
 }
 
-// POST /api/members - Enforces tenant_id from auth token
+// POST /api/members - Enforces tenant_id from auth token or POS x-api-key
 app.post('/api/members', async (req: Request, res: Response) => {
-  const auth = verifyAuthToken(req);
+  const auth = await resolveRequestAuth(req);
   if (!auth) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -1632,8 +2313,8 @@ app.post('/api/members', async (req: Request, res: Response) => {
 
   try {
     const rows = isAdminRole(auth.role)
-      ? await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE id = ${targetRef} OR slug = ${targetRef} LIMIT 1;`
-      : await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;`;
+      ? await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id, plan, pass_limit FROM tenants WHERE id = ${targetRef} OR slug = ${targetRef} LIMIT 1;`
+      : await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id, plan, pass_limit FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;`;
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Tenant not found' });
@@ -1645,15 +2326,19 @@ app.post('/api/members', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/tenants/:slug/enroll - Strict tenant lookup (NO banlis fallback, NO LIMIT 1 fallback)
+// POST /api/tenants/:slug/enroll - Rate-limited store enrollment (checks Active status & pass_limit)
 app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
+  const { slug } = req.params;
+  const rl = checkRateLimit(`enroll:${getClientIp(req)}:${slug}`, 25, 5 * 60 * 1000);
+  if (!rl.allowed) {
+    return res.status(429).json({ error: `Too many enrollment attempts. Please wait ${rl.retryAfterSec}s.` });
+  }
   await ensureMigration();
   if (!sql) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
-  const auth = verifyAuthToken(req);
-  const { slug } = req.params;
+  const auth = await resolveRequestAuth(req);
 
   if (auth && !isAdminRole(auth.role) && slug !== auth.tenantSlug && slug !== auth.tenantId) {
     return res.status(403).json({ error: 'Forbidden: cannot enroll member into another tenant' });
@@ -1662,11 +2347,15 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
   try {
     const rows =
       auth && !isAdminRole(auth.role)
-        ? await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;`
-        : await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id FROM tenants WHERE slug = ${slug} OR id = ${slug} LIMIT 1;`;
+        ? await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id, plan, pass_limit, status FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;`
+        : await sql`SELECT id, slug, name, logo, color, archetype, class_id, issuer_id, plan, pass_limit, status FROM tenants WHERE slug = ${slug} OR id = ${slug} LIMIT 1;`;
 
     if (rows.length === 0) {
       return res.status(404).json({ error: `Tenant not found for slug=${slug}` });
+    }
+    const st = String(rows[0].status || 'Active').trim().toLowerCase();
+    if (st === 'suspended' || st === 'rejected' || st === 'pending' || st === 'pending approval') {
+      return res.status(403).json({ error: 'This store loyalty program is currently not active for enrollment' });
     }
     return enrollMemberForTenant(rows[0] as TenantRow, req, res);
   } catch (err) {
@@ -1675,9 +2364,9 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
   }
 });
 
-// Shared points adjustment logic - STRICTLY enforces tenant_id = auth.tenantId for merchants
+// Shared points adjustment logic - STRICTLY enforces tenant_id (Bearer or POS x-api-key)
 async function handleMemberPointsUpdate(req: Request, rawId: string, body: any, res: Response) {
-  const auth = verifyAuthToken(req);
+  const auth = await resolveRequestAuth(req);
   if (!auth) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -1713,6 +2402,37 @@ async function handleMemberPointsUpdate(req: Request, rawId: string, body: any, 
 
     const currentMember = rows[0];
     const currentPoints = Number(currentMember.points || 0);
+
+    await ensureProgramTables();
+    const cfgRows = await sql`
+      SELECT min_floor, tiers_json
+      FROM program_configs
+      WHERE tenant_id = ${currentMember.tenant_id}
+      LIMIT 1;
+    `.catch(() => []);
+    const cfg = cfgRows[0];
+    const minFloor = Number(cfg?.min_floor ?? 0);
+    const configuredTiers = cfg && Array.isArray(cfg.tiers_json) ? cfg.tiers_json : defaultTiers();
+
+    if (body?.redeemingCoupon && currentPoints < minFloor) {
+      return res.status(400).json({
+        error: `Minimum redemption floor not met (${minFloor} PTS required; member has ${currentPoints} PTS)`,
+      });
+    }
+
+    const redeemPoints = Number(body?.redeemPoints || 0);
+    if (redeemPoints > 0 && currentPoints < redeemPoints) {
+      return res.status(400).json({
+        error: `Insufficient points for coupon redemption (needs ${redeemPoints} PTS; member has ${currentPoints} PTS)`,
+      });
+    }
+
+    if (absolute === null && delta < 0 && !body?.allowClamp && currentPoints + delta < 0) {
+      return res.status(400).json({
+        error: `Insufficient points balance (${currentPoints} PTS available)`,
+      });
+    }
+
     const newPoints = absolute !== null ? Math.max(0, absolute) : Math.max(0, currentPoints + delta);
     const changeAmount = newPoints - currentPoints;
 
@@ -1730,9 +2450,10 @@ async function handleMemberPointsUpdate(req: Request, rawId: string, body: any, 
     } catch {}
 
     const finalPoints = Number(member.points || 0);
-    let tier = 'SILVER';
-    if (finalPoints >= 2000) tier = 'PLATINUM';
-    else if (finalPoints >= 1000) tier = 'GOLD VIP';
+    const tierInfo = computeTierFromRules(finalPoints, configuredTiers);
+    const restSync = member.google_object_id
+      ? await syncGoogleWalletRest(member.google_object_id, finalPoints)
+      : { synced: false, detail: 'No Wallet object ID' };
 
     return res.json({
       success: true,
@@ -1741,10 +2462,14 @@ async function handleMemberPointsUpdate(req: Request, rawId: string, body: any, 
       points: finalPoints,
       objectId: member.google_object_id || rawId,
       loyaltyPoints: { balance: { int: finalPoints }, label: 'Points' },
-      tier,
-      lockScreenPushSent: true,
+      tier: tierInfo.name,
+      tierMultiplier: tierInfo.multiplier,
+      lockScreenPushSent: restSync.synced,
+      walletSyncDetail: restSync.detail,
       updatedAt: new Date().toISOString(),
-      message: 'Points updated and synced with database',
+      message: restSync.synced
+        ? 'Points updated and synchronized with Google Wallet'
+        : 'Points updated and saved to database',
     });
   } catch (err: any) {
     console.error('[Neon Postgres] UPDATE points error:', err);
@@ -1843,12 +2568,16 @@ async function ensureGeoCampaignsTable() {
       cadence TEXT DEFAULT 'proximity',
       action_label TEXT DEFAULT 'View Offer',
       venue_label TEXT DEFAULT '',
+      venue_lat DOUBLE PRECISION,
+      venue_lng DOUBLE PRECISION,
       hero_sync BOOLEAN DEFAULT TRUE,
       status TEXT DEFAULT 'Active',
       taps_today INT DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `;
+  await sql`ALTER TABLE geo_campaigns ADD COLUMN IF NOT EXISTS venue_lat DOUBLE PRECISION;`;
+  await sql`ALTER TABLE geo_campaigns ADD COLUMN IF NOT EXISTS venue_lng DOUBLE PRECISION;`;
 }
 
 function mapGeoCampaignRow(r: any) {
@@ -1866,6 +2595,8 @@ function mapGeoCampaignRow(r: any) {
     cadence: r.cadence || 'proximity',
     actionLabel: r.action_label || 'View Offer',
     venueLabel: r.venue_label || '',
+    venueLat: r.venue_lat !== null && r.venue_lat !== undefined ? Number(r.venue_lat) : null,
+    venueLng: r.venue_lng !== null && r.venue_lng !== undefined ? Number(r.venue_lng) : null,
     heroSync: Boolean(r.hero_sync),
     status: r.status || 'Active',
     tapsToday: Number(r.taps_today || 0),
@@ -1948,6 +2679,8 @@ app.post('/api/geo-campaigns', async (req: Request, res: Response) => {
     : 'proximity';
   const actionLabel = String(body.actionLabel || 'View Offer').trim().slice(0, 60);
   const venueLabel = String(body.venueLabel || '').trim().slice(0, 120);
+  const venueLat = body.venueLat !== undefined && body.venueLat !== null && !isNaN(Number(body.venueLat)) ? Number(body.venueLat) : null;
+  const venueLng = body.venueLng !== undefined && body.venueLng !== null && !isNaN(Number(body.venueLng)) ? Number(body.venueLng) : null;
   const heroSync = body.heroSync !== undefined ? Boolean(body.heroSync) : true;
   const status = String(body.status || (cadence === 'fixed' ? 'Scheduled' : 'Active')).trim();
 
@@ -1988,20 +2721,43 @@ app.post('/api/geo-campaigns', async (req: Request, res: Response) => {
     const inserted = await sql`
       INSERT INTO geo_campaigns (
         id, tenant_id, title, push_title, push_body, segment, radius_meters,
-        trigger_rule, cadence, action_label, venue_label, hero_sync, status, taps_today
+        trigger_rule, cadence, action_label, venue_label, venue_lat, venue_lng, hero_sync, status, taps_today
       )
       VALUES (
         ${id}, ${resolvedTenantId}, ${title.slice(0, 120)}, ${pushTitle.slice(0, 60)},
         ${pushBody.slice(0, 140)}, ${segment}, ${radiusMeters}, ${triggerRule},
-        ${cadence}, ${actionLabel}, ${venueLabel}, ${heroSync}, ${status}, 0
+        ${cadence}, ${actionLabel}, ${venueLabel}, ${venueLat}, ${venueLng}, ${heroSync}, ${status}, 0
       )
       RETURNING *;
     `;
+
+    let walletSyncedCount = 0;
+    if (status.toLowerCase() === 'active') {
+      const mRows = await sql`
+        SELECT google_object_id, points FROM members WHERE tenant_id = ${resolvedTenantId} AND google_object_id IS NOT NULL;
+      `;
+      const targets = mRows.filter((m: any) => {
+        const pts = Number(m.points || 0);
+        if (segment === 'vip') return pts >= 1000;
+        if (segment === 'silver') return pts < 1000;
+        return true;
+      }).slice(0, 25);
+      const syncResults = await Promise.allSettled(
+        targets.map((m: any) =>
+          syncGoogleWalletRest(m.google_object_id, Number(m.points || 0), {
+            header: pushTitle.slice(0, 60),
+            body: pushBody.slice(0, 140),
+          })
+        )
+      );
+      walletSyncedCount = syncResults.filter((r) => r.status === 'fulfilled' && r.value.synced).length;
+    }
 
     const row = { ...inserted[0], store_name: storeName, store_slug: storeSlug };
     return res.status(201).json({
       success: true,
       campaign: mapGeoCampaignRow(row),
+      walletSyncedCount,
       message: `Geo-campaign dispatched for ${storeName}`,
     });
   } catch (err: any) {
@@ -2022,7 +2778,8 @@ app.post('/api/geo-campaigns/test-push', async (req: Request, res: Response) => 
 
   const body = req.body || {};
   const segment = String(body.segment || 'all').toLowerCase();
-  const pushTitle = String(body.pushTitle || 'Wallet Pass Proximity Alert').trim();
+  const pushTitle = String(body.pushTitle || 'Wallet Pass Proximity Alert').trim().slice(0, 60);
+  const pushBody = String(body.pushBody || 'Tap your Google Wallet loyalty pass at checkout!').trim().slice(0, 140);
 
   try {
     let targetTenant: any = null;
@@ -2042,7 +2799,7 @@ app.post('/api/geo-campaigns/test-push', async (req: Request, res: Response) => 
     }
 
     const memberRows = await sql`
-      SELECT id, points FROM members WHERE tenant_id = ${targetTenant.id};
+      SELECT id, points, google_object_id FROM members WHERE tenant_id = ${targetTenant.id};
     `;
     const matchingMembers = memberRows.filter((m: any) => {
       const pts = Number(m.points || 0);
@@ -2051,12 +2808,24 @@ app.post('/api/geo-campaigns/test-push', async (req: Request, res: Response) => 
       return true;
     });
 
+    const walletTargets = matchingMembers.filter((m: any) => Boolean(m.google_object_id)).slice(0, 25);
+    const results = await Promise.allSettled(
+      walletTargets.map((m: any) =>
+        syncGoogleWalletRest(m.google_object_id, Number(m.points || 0), {
+          header: pushTitle,
+          body: pushBody,
+        })
+      )
+    );
+    const walletSyncedCount = results.filter((r) => r.status === 'fulfilled' && r.value.synced).length;
+
     return res.status(200).json({
       success: true,
       storeName: targetTenant.name,
       classId: targetTenant.class_id,
       segment,
       deliveredTo: matchingMembers.length,
+      walletSyncedCount,
       pushTitle,
       timestamp: new Date().toISOString(),
     });
@@ -2177,9 +2946,16 @@ async function ensureProgramTables() {
       earn_velocity INT DEFAULT 10,
       min_floor INT DEFAULT 500,
       tiers_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      sheen_value INT DEFAULT 72,
+      fields_json JSONB NOT NULL DEFAULT '{"pointsBalance":true,"tierBadge":true,"expirationCountdown":false,"proximityBeacon":true}'::jsonb,
+      custom_logo_url TEXT DEFAULT '',
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   `;
+  await sql`ALTER TABLE program_configs ADD COLUMN IF NOT EXISTS sheen_value INT DEFAULT 72;`;
+  await sql`ALTER TABLE program_configs ADD COLUMN IF NOT EXISTS fields_json JSONB DEFAULT '{"pointsBalance":true,"tierBadge":true,"expirationCountdown":false,"proximityBeacon":true}'::jsonb;`;
+  await sql`ALTER TABLE program_configs ADD COLUMN IF NOT EXISTS custom_logo_url TEXT DEFAULT '';`;
+  await sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS api_key TEXT;`;
   await sql`
     CREATE TABLE IF NOT EXISTS coupons (
       id TEXT PRIMARY KEY,
@@ -2204,6 +2980,15 @@ function defaultTiers() {
   ];
 }
 
+function defaultFields() {
+  return {
+    pointsBalance: true,
+    tierBadge: true,
+    expirationCountdown: false,
+    proximityBeacon: true,
+  };
+}
+
 function mapCouponRow(r: any) {
   return {
     id: r.id,
@@ -2223,7 +3008,7 @@ async function resolveScopedTenant(auth: AuthContext, requestedRef?: string) {
   if (!sql) return null;
   if (!isAdminRole(auth.role)) {
     const rows = await sql`
-      SELECT id, slug, name, logo, color, archetype, class_id, owner_name, owner_email
+      SELECT id, slug, name, logo, color, archetype, class_id, owner_name, owner_email, plan, pass_limit, api_key
       FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;
     `;
     return rows[0] || null;
@@ -2231,7 +3016,7 @@ async function resolveScopedTenant(auth: AuthContext, requestedRef?: string) {
   const ref = (requestedRef || '').trim();
   if (!ref) return null;
   const rows = await sql`
-    SELECT id, slug, name, logo, color, archetype, class_id, owner_name, owner_email
+    SELECT id, slug, name, logo, color, archetype, class_id, owner_name, owner_email, plan, pass_limit, api_key
     FROM tenants WHERE slug = ${ref} OR id = ${ref} LIMIT 1;
   `;
   return rows[0] || null;
@@ -2267,6 +3052,7 @@ app.get('/api/program-config', async (req: Request, res: Response) => {
       cfg && Array.isArray(cfg.tiers_json) && cfg.tiers_json.length > 0
         ? cfg.tiers_json
         : defaultTiers();
+    const parsedFields = cfg && cfg.fields_json ? { ...defaultFields(), ...cfg.fields_json } : defaultFields();
 
     return res.status(200).json({
       tenant: {
@@ -2274,8 +3060,11 @@ app.get('/api/program-config', async (req: Request, res: Response) => {
         slug: tenant.slug,
         name: tenant.name,
         brandColor: tenant.color || '#ff5722',
+        logoUrl: cfg?.custom_logo_url || tenant.logo || '',
         archetype: tenant.archetype || 'loyalty',
         classId: tenant.class_id || '',
+        plan: tenant.plan || 'growth',
+        passLimit: Number(tenant.pass_limit || 5000),
       },
       config: {
         programName: cfg?.program_name || `${tenant.name} Club`,
@@ -2287,6 +3076,9 @@ app.get('/api/program-config', async (req: Request, res: Response) => {
         earnVelocity: cfg ? Number(cfg.earn_velocity ?? 10) : 10,
         minFloor: cfg ? Number(cfg.min_floor ?? 500) : 500,
         tiers: parsedTiers,
+        sheenValue: cfg ? Number(cfg.sheen_value ?? 72) : 72,
+        fields: parsedFields,
+        customLogoUrl: cfg?.custom_logo_url || tenant.logo || '',
         updatedAt: cfg?.updated_at || null,
       },
       coupons: couponRows.map(mapCouponRow),
@@ -2316,24 +3108,31 @@ app.put('/api/program-config', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Target store tenant not found' });
     }
 
-    const programName = String(body.programName || `${tenant.name} Club`).trim().slice(0, 80);
-    const archetype = ['loyalty', 'gift', 'ticket'].includes(String(body.archetype || '').toLowerCase())
-      ? String(body.archetype).toLowerCase()
-      : tenant.archetype || 'loyalty';
-    const cardTitle = String(body.cardTitle || `${tenant.name} Card`).trim().slice(0, 80);
-    const barcodeMode = body.barcodeMode === 'qr' ? 'qr' : 'barcode';
-    const welcomeActive = body.welcomeActive !== undefined ? Boolean(body.welcomeActive) : true;
-    const welcomeGrant = Math.max(0, Math.min(50000, Math.round(Number(body.welcomeGrant ?? 100))));
-    const earnVelocity = Math.max(1, Math.min(500, Math.round(Number(body.earnVelocity ?? 10))));
-    const minFloor = Math.max(50, Math.min(50000, Math.round(Number(body.minFloor ?? 500))));
-    const tiers = Array.isArray(body.tiers) && body.tiers.length > 0 ? body.tiers : defaultTiers();
+    const existingRows = await sql`SELECT * FROM program_configs WHERE tenant_id = ${tenant.id} LIMIT 1;`;
+    const existing = existingRows[0];
 
-    if (body.storeName || body.brandColor) {
+    const programName = String(body.programName || existing?.program_name || `${tenant.name} Club`).trim().slice(0, 80);
+    const archetype = ['loyalty', 'gift', 'ticket'].includes(String(body.archetype || existing?.archetype || '').toLowerCase())
+      ? String(body.archetype || existing?.archetype).toLowerCase()
+      : tenant.archetype || 'loyalty';
+    const cardTitle = String(body.cardTitle || existing?.card_title || `${tenant.name} Card`).trim().slice(0, 80);
+    const barcodeMode = (body.barcodeMode || existing?.barcode_mode) === 'qr' ? 'qr' : 'barcode';
+    const welcomeActive = body.welcomeActive !== undefined ? Boolean(body.welcomeActive) : (existing ? Boolean(existing.welcome_active) : true);
+    const welcomeGrant = Math.max(0, Math.min(50000, Math.round(Number(body.welcomeGrant ?? existing?.welcome_grant ?? 100))));
+    const earnVelocity = Math.max(1, Math.min(500, Math.round(Number(body.earnVelocity ?? existing?.earn_velocity ?? 10))));
+    const minFloor = Math.max(50, Math.min(50000, Math.round(Number(body.minFloor ?? existing?.min_floor ?? 500))));
+    const tiers = Array.isArray(body.tiers) && body.tiers.length > 0 ? body.tiers : (existing?.tiers_json || defaultTiers());
+    const sheenValue = Math.max(20, Math.min(100, Math.round(Number(body.sheenValue ?? existing?.sheen_value ?? 72))));
+    const fields = body.fields ? { ...defaultFields(), ...body.fields } : (existing?.fields_json || defaultFields());
+    const customLogoUrl = body.customLogoUrl !== undefined ? String(body.customLogoUrl || '').trim() : (existing?.custom_logo_url || '');
+
+    if (body.storeName || body.brandColor || customLogoUrl) {
       await sql`
         UPDATE tenants
         SET
           name = COALESCE(${body.storeName ? String(body.storeName).trim() : null}, name),
           color = COALESCE(${body.brandColor ? String(body.brandColor).trim() : null}, color),
+          logo = COALESCE(${customLogoUrl || null}, logo),
           archetype = ${archetype}
         WHERE id = ${tenant.id};
       `;
@@ -2342,11 +3141,13 @@ app.put('/api/program-config', async (req: Request, res: Response) => {
     const saved = await sql`
       INSERT INTO program_configs (
         tenant_id, program_name, archetype, card_title, barcode_mode,
-        welcome_active, welcome_grant, earn_velocity, min_floor, tiers_json, updated_at
+        welcome_active, welcome_grant, earn_velocity, min_floor, tiers_json,
+        sheen_value, fields_json, custom_logo_url, updated_at
       )
       VALUES (
         ${tenant.id}, ${programName}, ${archetype}, ${cardTitle}, ${barcodeMode},
-        ${welcomeActive}, ${welcomeGrant}, ${earnVelocity}, ${minFloor}, ${JSON.stringify(tiers)}::jsonb, NOW()
+        ${welcomeActive}, ${welcomeGrant}, ${earnVelocity}, ${minFloor}, ${JSON.stringify(tiers)}::jsonb,
+        ${sheenValue}, ${JSON.stringify(fields)}::jsonb, ${customLogoUrl}, NOW()
       )
       ON CONFLICT (tenant_id) DO UPDATE SET
         program_name = EXCLUDED.program_name,
@@ -2358,6 +3159,9 @@ app.put('/api/program-config', async (req: Request, res: Response) => {
         earn_velocity = EXCLUDED.earn_velocity,
         min_floor = EXCLUDED.min_floor,
         tiers_json = EXCLUDED.tiers_json,
+        sheen_value = EXCLUDED.sheen_value,
+        fields_json = EXCLUDED.fields_json,
+        custom_logo_url = EXCLUDED.custom_logo_url,
         updated_at = NOW()
       RETURNING *;
     `;
@@ -2375,6 +3179,9 @@ app.put('/api/program-config', async (req: Request, res: Response) => {
         earnVelocity: Number(row.earn_velocity),
         minFloor: Number(row.min_floor),
         tiers: row.tiers_json,
+        sheenValue: Number(row.sheen_value ?? 72),
+        fields: row.fields_json || defaultFields(),
+        customLogoUrl: row.custom_logo_url || '',
         updatedAt: row.updated_at,
       },
       message: 'Program rules & card configuration saved',
@@ -2382,6 +3189,183 @@ app.put('/api/program-config', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[Neon Postgres] PUT /api/program-config error:', err);
     return res.status(500).json({ error: err?.message || 'Failed to save program configuration' });
+  }
+});
+
+// GET /api/analytics - Tenant-scoped analytics, tier distribution & recent ledger
+app.get('/api/analytics', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  try {
+    await ensureProgramTables();
+    const ref = typeof req.query?.slug === 'string' ? req.query.slug : undefined;
+    const tenant = await resolveScopedTenant(auth, ref);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Store tenant not found' });
+    }
+
+    const memberRows = await sql`
+      SELECT id, name, member_id, points FROM members WHERE tenant_id = ${tenant.id};
+    `;
+    const cfgRows = await sql`SELECT tiers_json FROM program_configs WHERE tenant_id = ${tenant.id} LIMIT 1;`;
+    const tiers = cfgRows[0]?.tiers_json || defaultTiers();
+
+    const tierBreakdown: Record<string, number> = {};
+    for (const t of tiers) tierBreakdown[String(t.name)] = 0;
+
+    let totalPoints = 0;
+    for (const m of memberRows) {
+      const pts = Number(m.points || 0);
+      totalPoints += pts;
+      const tier = computeTierFromRules(pts, tiers);
+      tierBreakdown[tier.name] = (tierBreakdown[tier.name] || 0) + 1;
+    }
+
+    const txRows = await sql`
+      SELECT pt.id, pt.member_id, pt.change_amount, pt.reason, pt.created_at, m.name as member_name, m.member_id as card_uid
+      FROM point_transactions pt
+      JOIN members m ON m.id = pt.member_id
+      WHERE m.tenant_id = ${tenant.id}
+      ORDER BY pt.created_at DESC NULLS LAST, pt.id DESC
+      LIMIT 40;
+    `.catch(() => []);
+
+    let totalEarned = 0;
+    let totalRedeemed = 0;
+    for (const tx of txRows) {
+      const amt = Number(tx.change_amount || 0);
+      if (amt >= 0) totalEarned += amt;
+      else totalRedeemed += Math.abs(amt);
+    }
+
+    const couponRows = await sql`SELECT active FROM coupons WHERE tenant_id = ${tenant.id};`.catch(() => []);
+    const geoRows = await sql`SELECT status FROM geo_campaigns WHERE tenant_id = ${tenant.id};`.catch(() => []);
+
+    return res.status(200).json({
+      tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
+      summary: {
+        memberCount: memberRows.length,
+        totalPoints,
+        totalEarned,
+        totalRedeemed,
+        activeCoupons: couponRows.filter((c: any) => c.active !== false).length,
+        totalCoupons: couponRows.length,
+        activeCampaigns: geoRows.filter((g: any) => String(g.status || '').toLowerCase() === 'active').length,
+      },
+      tierBreakdown: Object.entries(tierBreakdown).map(([name, count]) => ({ name, count })),
+      recentTransactions: txRows,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to load analytics' });
+  }
+});
+
+// POST /api/tenants/:slug/upgrade-request - Merchant billing upgrade inquiry persisted for Super Admin
+app.post('/api/tenants/:slug/upgrade-request', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  try {
+    const requestedPlan = String(req.body?.plan || 'scale');
+    const billingCycle = String(req.body?.billingCycle || 'monthly');
+    const tenant = await resolveScopedTenant(auth, req.params.slug);
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS platform_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+    const key = `upgrade_req_${tenant.id}`;
+    await sql`
+      INSERT INTO platform_settings (key, value, updated_at)
+      VALUES (${key}, ${JSON.stringify({ tenantId: tenant.id, slug: tenant.slug, name: tenant.name, requestedPlan, billingCycle, requestedAt: new Date().toISOString() })}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+    `;
+    return res.status(200).json({
+      success: true,
+      message: `Upgrade request for ${requestedPlan.toUpperCase()} (${billingCycle}) logged for Super Admin approval.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to log upgrade request' });
+  }
+});
+
+// GET /api/upgrade-requests - Super Admin view of pending merchant plan upgrade requests
+app.get('/api/upgrade-requests', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth || !isAdminRole(auth.role)) {
+    return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS platform_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+    const rows = await sql`
+      SELECT key, value, updated_at
+      FROM platform_settings
+      WHERE key LIKE 'upgrade_req_%'
+      ORDER BY updated_at DESC;
+    `;
+    const tenantRows = await sql`SELECT id, slug, name, plan, pass_limit, owner_email FROM tenants;`;
+    const tenantById = new Map<string, any>();
+    for (const t of tenantRows) tenantById.set(String(t.id), t);
+
+    const requests: any[] = [];
+    for (const r of rows) {
+      try {
+        const parsed = JSON.parse(String(r.value || '{}'));
+        const t = tenantById.get(String(parsed.tenantId || ''));
+        if (!t) continue;
+        requests.push({
+          tenantId: t.id,
+          slug: t.slug,
+          name: t.name,
+          currentPlan: t.plan || 'growth',
+          ownerEmail: t.owner_email || '',
+          requestedPlan: parsed.requestedPlan || 'scale',
+          billingCycle: parsed.billingCycle || 'monthly',
+          requestedAt: parsed.requestedAt || r.updated_at,
+        });
+      } catch {}
+    }
+
+    return res.status(200).json(requests);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to load upgrade requests' });
+  }
+});
+
+// DELETE /api/upgrade-requests/:tenantId - Super Admin dismiss upgrade inquiry
+app.delete('/api/upgrade-requests/:tenantId', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth || !isAdminRole(auth.role)) {
+    return res.status(auth ? 403 : 401).json({ error: 'Super Admin authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) return res.status(500).json({ error: 'Database not configured' });
+
+  try {
+    const tenantId = String(req.params.tenantId || '').trim();
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+    await sql`DELETE FROM platform_settings WHERE key = ${`upgrade_req_${tenantId}`};`;
+    return res.status(200).json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to dismiss upgrade request' });
   }
 });
 

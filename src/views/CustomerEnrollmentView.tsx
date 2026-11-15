@@ -19,16 +19,24 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
+  const [lookupSlugInput, setLookupSlugInput] = useState<string>('');
+  const [isLookingUpStore, setIsLookingUpStore] = useState<boolean>(false);
 
   const [storeInfo, setStoreInfo] = useState<{
     slug: string;
     name: string;
+    programName?: string;
     brandColor: string;
     logoUrl?: string;
+    welcomeActive?: boolean;
+    welcomeGrant?: number;
+    tiers?: Array<{ name: string; minPoints: number }>;
   }>({
     slug: activeSlug,
     name: activeSlug || 'Store Loyalty Club',
     brandColor: '#ff5722',
+    welcomeActive: true,
+    welcomeGrant: 100,
   });
 
   const [enrolledMember, setEnrolledMember] = useState<{
@@ -40,6 +48,48 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
     points: 100,
     tier: 'SILVER',
   });
+
+  const fetchStoreProfile = async (slugToLoad: string) => {
+    if (!slugToLoad) return;
+    setIsLookingUpStore(true);
+    setErrorMessage('');
+    try {
+      const res = await fetch(`/api/public/tenants/${encodeURIComponent(slugToLoad)}`);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.name) {
+        setStoreInfo({
+          slug: data.slug || slugToLoad,
+          name: data.name,
+          programName: data.programName,
+          brandColor: data.brandColor || '#ff5722',
+          logoUrl: data.logoUrl,
+          welcomeActive: data.welcomeActive !== false,
+          welcomeGrant: Number(data.welcomeGrant ?? 100),
+          tiers: Array.isArray(data.tiers) ? data.tiers : undefined,
+        });
+        return;
+      }
+      if (getAuthToken()) {
+        const authRes = await authFetch(`/api/tenants/${encodeURIComponent(slugToLoad)}`);
+        const td = await authRes.json().catch(() => null);
+        if (authRes.ok && td?.name) {
+          setStoreInfo((prev) => ({
+            ...prev,
+            slug: td.slug || slugToLoad,
+            name: td.name,
+            brandColor: td.brandColor || '#ff5722',
+            logoUrl: td.logoUrl,
+          }));
+          return;
+        }
+      }
+      setErrorMessage(data?.error || `Store "${slugToLoad}" was not found or is not active yet.`);
+    } catch {
+      setErrorMessage('Unable to look up store profile right now.');
+    } finally {
+      setIsLookingUpStore(false);
+    }
+  };
 
   useEffect(() => {
     const querySlug =
@@ -53,20 +103,8 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
       name: targetSlug || 'Store Loyalty Club',
     }));
 
-    if (targetSlug && getAuthToken()) {
-      authFetch(`/api/tenants/${encodeURIComponent(targetSlug)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data?.name) {
-            setStoreInfo({
-              slug: data.slug || targetSlug,
-              name: data.name,
-              brandColor: data.brandColor || '#ff5722',
-              logoUrl: data.logoUrl,
-            });
-          }
-        })
-        .catch(() => {});
+    if (targetSlug) {
+      fetchStoreProfile(targetSlug);
     }
   }, [activeSlug]);
 
@@ -77,7 +115,7 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
     const hasToken = Boolean(getAuthToken());
 
     if (!hasToken && !targetSlug) {
-      const msg = 'No active store selected. Sign in or open a valid store join link.';
+      const msg = 'No active store selected. Sign in or open a valid store join link (?store=your-slug).';
       setErrorMessage(msg);
       setIsLoading(false);
       throw new Error(msg);
@@ -99,31 +137,27 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (
-        !res.ok ||
-        !data.member ||
-        typeof data.saveToWalletUrl !== 'string' ||
-        !data.saveToWalletUrl.startsWith('https://pay.google.com/gp/v/save/')
-      ) {
-        throw new Error(data.error || 'Failed to save member in database or sign Google Wallet pass.');
+      if (!res.ok || !data.member) {
+        throw new Error(data.error || 'Failed to save member enrollment in database.');
       }
 
-      const pts = Number(data.member.points ?? data.pass?.points ?? 100);
-      const tier = pts >= 2000 ? 'PLATINUM' : pts >= 1000 ? 'GOLD VIP' : 'SILVER';
+      const pts = Number(data.member.points ?? data.pass?.points ?? 0);
+      const tier = data.pass?.tier || (pts >= 4000 ? 'VIP Plat' : pts >= 1500 ? 'Gold (Mid)' : 'Silver');
       setEnrolledMember({
         uid: `#${data.member.member_id || data.member.id}`,
         points: pts,
         tier,
       });
       if (data.tenant?.name) {
-        setStoreInfo({
+        setStoreInfo((prev) => ({
+          ...prev,
           slug: data.tenant.slug || targetSlug,
           name: data.tenant.name,
           brandColor: data.tenant.brandColor || '#ff5722',
-          logoUrl: data.tenant.logoUrl,
-        });
+          logoUrl: data.tenant.logoUrl || prev.logoUrl,
+        }));
       }
-      setJwtLink(data.saveToWalletUrl);
+      setJwtLink(typeof data.saveToWalletUrl === 'string' ? data.saveToWalletUrl : '');
       setIsSubmitted(true);
       return data;
     } catch (err) {
@@ -148,11 +182,12 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
 
   const handleCopyLink = () => {
     sounds.click();
-    if (jwtLink) {
-      navigator.clipboard.writeText(jwtLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    const fallbackUrl = storeInfo.slug
+      ? `${window.location.origin}/?view=enroll&store=${encodeURIComponent(storeInfo.slug)}`
+      : window.location.href;
+    navigator.clipboard?.writeText(jwtLink || fallbackUrl).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const storeInitial = storeInfo.name.slice(0, 1).toUpperCase() || 'S';
@@ -184,7 +219,49 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
           </span>
         </div>
 
-        {!isSubmitted ? (
+        {!getAuthToken() && !storeInfo.slug ? (
+          /* Public Store Code / Slug Lookup */
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const clean = lookupSlugInput.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+              if (clean) fetchStoreProfile(clean);
+            }}
+            className="flex flex-col gap-4 relative z-10"
+          >
+            <p className="font-body-sm text-body-sm text-on-surface-variant text-center">
+              Enter your merchant&apos;s store code (from their QR poster or join link) to claim your loyalty card.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
+                Store Code / Slug
+              </label>
+              <div className="h-11 px-4 rounded-xl bg-surface tactile-deboss flex items-center">
+                <input
+                  required
+                  type="text"
+                  value={lookupSlugInput}
+                  onChange={(e) => setLookupSlugInput(e.target.value)}
+                  placeholder="e.g. roast-bistro"
+                  className="bg-transparent w-full font-mono text-sm text-on-surface focus:outline-none"
+                />
+              </div>
+            </div>
+            {errorMessage && (
+              <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+                {errorMessage}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={isLookingUpStore}
+              className="w-full py-3 rounded-full bg-[#ff5722] text-white font-bold text-sm tactile-glow flex items-center justify-center gap-2"
+            >
+              <span>{isLookingUpStore ? 'Looking up store...' : 'Continue to Store Enrollment'}</span>
+              <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+            </button>
+          </form>
+        ) : !isSubmitted ? (
           /* Enrollment Form */
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 relative z-10">
             <div className="flex flex-col gap-1.5">
@@ -269,23 +346,33 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
                 Welcome, {customerName}!
               </h3>
               <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                Your digital loyalty card has been minted on Google Wallet. Enjoy 100 Bonus PTS instantly!
+                {enrolledMember.points > 0
+                  ? `Your digital loyalty card is ready at ${storeInfo.name}. Enjoy ${enrolledMember.points.toLocaleString()} Bonus PTS instantly!`
+                  : `Your digital loyalty card is now active at ${storeInfo.name}.`}
               </p>
             </div>
 
-            {/* Official Black "Add to Google Wallet" Button */}
-            <a
-              href={jwtLink || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => sounds.chime()}
-              className="w-full py-3.5 px-6 rounded-full bg-black text-white hover:bg-neutral-900 tactile-glow flex items-center justify-center gap-3 transition-transform active:scale-95 shadow-xl border border-white/20 group cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[22px] text-white">wallet</span>
-              <span className="font-headline-sm text-headline-sm font-bold tracking-tight text-white">
-                Add to Google Wallet
-              </span>
-            </a>
+            {jwtLink ? (
+              <a
+                href={jwtLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => sounds.chime()}
+                className="w-full py-3.5 px-6 rounded-full bg-black text-white hover:bg-neutral-900 tactile-glow flex items-center justify-center gap-3 transition-transform active:scale-95 shadow-xl border border-white/20 group cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[22px] text-white">wallet</span>
+                <span className="font-headline-sm text-headline-sm font-bold tracking-tight text-white">
+                  Add to Google Wallet
+                </span>
+              </a>
+            ) : (
+              <div className="w-full p-3.5 rounded-2xl bg-surface-container border border-surface-container-highest text-xs text-on-surface-variant flex items-center gap-2 text-left">
+                <span className="material-symbols-outlined text-[18px] text-[#ff5722] shrink-0">qr_code_2</span>
+                <span>
+                  Digital card saved to store registry. Present QR code or Member ID <strong className="text-on-surface font-mono">{enrolledMember.uid}</strong> at checkout.
+                </span>
+              </div>
+            )}
 
             {/* In-App Visualizer Button */}
             <button
@@ -325,7 +412,7 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
                 className="flex-1 py-2 px-3 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-semibold tactile-btn flex items-center justify-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                <span>{copied ? 'Link Copied!' : 'Copy Save URL'}</span>
+                <span>{copied ? 'Copied!' : jwtLink ? 'Copy Save URL' : 'Copy Join Link'}</span>
               </button>
               <button
                 onClick={() => {
@@ -362,7 +449,12 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
             {/* Google Wallet Card Visualizer */}
             <div className="p-6 flex flex-col items-center gap-5">
               {/* The Actual Pass Card */}
-              <div className="w-full bg-gradient-to-br from-[#ff5722] to-[#d84315] text-white rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between h-56 border border-white/20">
+              <div
+                className="w-full text-white rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between h-56 border border-white/20"
+                style={{
+                  background: `linear-gradient(135deg, ${storeInfo.brandColor || '#ff5722'}, #1f2229)`,
+                }}
+              >
                 {/* Background Pattern */}
                 <div className="absolute right-[-20%] bottom-[-20%] w-48 h-48 rounded-full bg-white/10 blur-xl pointer-events-none"></div>
 
@@ -377,7 +469,7 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
                     </div>
                     <div>
                       <h4 className="font-bold text-[16px] leading-tight">{storeInfo.name}</h4>
-                      <span className="text-[11px] text-white/80 font-medium">Loyalty Pass</span>
+                      <span className="text-[11px] text-white/80 font-medium">{storeInfo.programName || 'Loyalty Pass'}</span>
                     </div>
                   </div>
                   <span className="px-2.5 py-1 rounded-full bg-black/25 text-amber-300 font-bold text-[11px] tracking-wider uppercase border border-white/20">
@@ -448,7 +540,7 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
                   <rect x="97" y="0" width="3" height="24" />
                 </svg>
                 <span className="font-mono text-[11px] text-gray-700 tracking-widest font-bold">
-                  9802 4410 7719 3321
+                  {enrolledMember.uid.replace(/^#/, '')}
                 </span>
               </div>
 

@@ -71,6 +71,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
 
   // Store & Card Program Identity
   const [storeName, setStoreName] = useState<string>(activeSlug || 'Store Console');
+  const [storeSlug, setStoreSlug] = useState<string>(activeSlug || '');
   const [brandColor, setBrandColor] = useState<string>('#ff5722');
   const [archetype, setArchetype] = useState<'loyalty' | 'gift' | 'ticket'>('loyalty');
   const [classId, setClassId] = useState<string>('');
@@ -153,6 +154,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
         if (cancelled || !data) return;
         if (data.tenant) {
           setStoreName(data.tenant.name || activeSlug || 'Store Console');
+          if (data.tenant.slug) setStoreSlug(data.tenant.slug);
           setBrandColor(data.tenant.brandColor || '#ff5722');
           setClassId(data.tenant.classId || '');
           if (
@@ -387,17 +389,22 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
       showNotice('error', 'Enter a customer or cardholder name to issue a card.');
       return;
     }
-    const targetSlug = activeSlug || 'store';
+    const targetSlug = storeSlug || activeSlug;
+    if (isSuperAdmin && !targetSlug) {
+      showNotice('error', 'Select a store from the header dropdown first.');
+      return;
+    }
     setIsCreatingCard(true);
     sounds.chime();
     try {
       // Save latest rules first so welcomeGrant & programName take effect on enrollment
       await handleSaveConfig(true);
 
-      const res = await authFetch(`/api/tenants/${encodeURIComponent(targetSlug)}/enroll`, {
+      const res = await authFetch('/api/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenantSlug: targetSlug || undefined,
           name: newCardName.trim(),
           email: newCardEmail.trim(),
           phone: newCardPhone.trim(),

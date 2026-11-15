@@ -22,6 +22,17 @@ export interface TenantStore {
   baseEarnRate?: number;
 }
 
+interface PlanUpgradeRequest {
+  tenantId: string;
+  slug: string;
+  name: string;
+  currentPlan: string;
+  ownerEmail: string;
+  requestedPlan: 'starter' | 'growth' | 'scale';
+  billingCycle: string;
+  requestedAt: string;
+}
+
 interface SuperAdminViewProps {
   onSelectTenantDashboard?: (slug: string) => void;
 }
@@ -29,6 +40,7 @@ interface SuperAdminViewProps {
 export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDashboard }) => {
   const [tenants, setTenants] = useState<TenantStore[]>([]);
   const [pendingQueue, setPendingQueue] = useState<TenantStore[]>([]);
+  const [upgradeRequests, setUpgradeRequests] = useState<PlanUpgradeRequest[]>([]);
 
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,19 +112,21 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
       passCount: Number(t.passCount || t.pass_count || 0),
       status: normalizedStatus,
       createdAt: t.createdAt || new Date().toISOString(),
-      apiKey: `pk_live_${(t.slug || 'store').replace(/-/g, '_')}_${Math.floor(100000 + Math.random() * 900000)}`,
+      apiKey: t.apiKey || `pk_live_${(t.slug || 'store').replace(/-/g, '_')}`,
       baseEarnRate: 10,
     };
   };
 
   const fetchTenants = async () => {
     try {
-      const [allRes, pendingRes] = await Promise.all([
+      const [allRes, pendingRes, upgradeRes] = await Promise.all([
         authFetch('/api/tenants'),
         authFetch('/api/tenants?status=Pending'),
+        authFetch('/api/upgrade-requests'),
       ]);
       const allData = await allRes.json();
       const pendingData = await pendingRes.json().catch(() => []);
+      const upgradeData = await upgradeRes.json().catch(() => []);
 
       if (Array.isArray(allData)) {
         const mapped = allData.map(mapTenantRow);
@@ -122,6 +136,9 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
         } else {
           setPendingQueue(mapped.filter((t) => t.status === 'Pending Approval' || t.status === 'Pending'));
         }
+      }
+      if (Array.isArray(upgradeData) && upgradeRes.ok) {
+        setUpgradeRequests(upgradeData);
       }
     } catch (err) {
       console.error('Error fetching tenants from DB:', err);
@@ -173,6 +190,42 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
       }
     } catch (err) {
       triggerNotice('Error connecting to database');
+    }
+  };
+
+  // Approve a merchant billing plan upgrade request
+  const handleApproveUpgradeRequest = async (req: PlanUpgradeRequest) => {
+    sounds.chime();
+    try {
+      const res = await authFetch(`/api/tenants/${encodeURIComponent(req.slug)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: req.requestedPlan }),
+      });
+      if (res.ok) {
+        await fetchTenants();
+        triggerNotice(`Upgraded "${req.name}" to ${req.requestedPlan.toUpperCase()} Plan!`);
+      } else {
+        triggerNotice('Failed to approve plan upgrade in database');
+      }
+    } catch {
+      triggerNotice('Error connecting to database');
+    }
+  };
+
+  // Dismiss a merchant billing plan upgrade request
+  const handleDismissUpgradeRequest = async (req: PlanUpgradeRequest) => {
+    sounds.click(400, 0.04);
+    try {
+      const res = await authFetch(`/api/upgrade-requests/${encodeURIComponent(req.tenantId)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        await fetchTenants();
+        triggerNotice(`Dismissed plan upgrade request for "${req.name}".`);
+      }
+    } catch {
+      triggerNotice('Error dismissing upgrade request');
     }
   };
 
@@ -262,21 +315,35 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
     }
   };
 
-  // Handle Regenerate API Key
-  const handleRegenerateKey = (tenantId: string) => {
+  // Handle Regenerate API Key (persisted in Neon Postgres)
+  const handleRegenerateKey = async (tenant: TenantStore) => {
     sounds.click(1200, 0.03);
-    const newKey = `pk_live_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`;
-    setTenants(
-      tenants.map((t) => {
-        if (t.id === tenantId) {
-          const updated = { ...t, apiKey: newKey };
-          if (managingTenant?.id === tenantId) setManagingTenant(updated);
-          return updated;
-        }
-        return t;
-      })
-    );
-    triggerNotice('New Secret API Key Generated & HMAC Hash Updated!');
+    try {
+      const res = await authFetch(`/api/tenants/${encodeURIComponent(tenant.slug)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regenerateKey: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const persistedKey = data?.tenant?.apiKey;
+      if (res.ok && persistedKey) {
+        setTenants((prev) =>
+          prev.map((t) => {
+            if (t.id === tenant.id) {
+              const updated = { ...t, apiKey: persistedKey };
+              if (managingTenant?.id === tenant.id) setManagingTenant(updated);
+              return updated;
+            }
+            return t;
+          })
+        );
+        triggerNotice('New Secret API Key Generated & Saved to Neon DB!');
+      } else {
+        triggerNotice(data?.error || 'Failed to regenerate API key');
+      }
+    } catch {
+      triggerNotice('Error regenerating API key');
+    }
   };
 
   // Handle Delete Tenant with backend DB persistence
@@ -532,6 +599,82 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
           </div>
         )}
       </div>
+
+      {/* Plan Upgrade Requests Queue */}
+      {upgradeRequests.length > 0 && (
+        <div className="p-6 rounded-xl bg-surface-container-low tactile-card border border-[#ff5722]/30 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#ff5722] text-white flex items-center justify-center font-bold shadow-md shrink-0">
+                <span className="material-symbols-outlined text-[22px]">upgrade</span>
+              </div>
+              <div>
+                <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface flex items-center gap-2">
+                  <span>SaaS Plan Upgrade Requests</span>
+                  <span className="px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold bg-[#ff5722]/15 text-[#ff5722]">
+                    {upgradeRequests.length} Pending
+                  </span>
+                </h3>
+                <p className="font-body-sm text-body-sm text-on-surface-variant">
+                  Merchants requesting tier upgrades &amp; higher pass quotas from SaaS Billing
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left font-body-sm text-body-sm">
+              <thead>
+                <tr className="border-b border-surface-container-highest text-outline uppercase font-label-sm text-label-sm">
+                  <th className="py-2.5 px-4">Merchant Store</th>
+                  <th className="py-2.5 px-4">Current Plan</th>
+                  <th className="py-2.5 px-4">Requested Plan</th>
+                  <th className="py-2.5 px-4">Billing Cycle</th>
+                  <th className="py-2.5 px-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-container-highest/60">
+                {upgradeRequests.map((req) => (
+                  <tr key={req.tenantId} className="hover:bg-surface-container/50 transition-colors">
+                    <td className="py-3 px-4 font-bold text-on-surface">
+                      <div>{req.name}</div>
+                      <div className="font-mono text-[11px] text-outline">/{req.slug} • {req.ownerEmail}</div>
+                    </td>
+                    <td className="py-3 px-4 uppercase font-label-sm text-xs text-on-surface-variant">
+                      {req.currentPlan}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-label-sm text-label-sm font-bold uppercase">
+                        {req.requestedPlan}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 uppercase text-xs font-mono text-on-surface-variant">
+                      {req.billingCycle}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleApproveUpgradeRequest(req)}
+                          className="px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-label-sm text-label-sm font-bold shadow-md flex items-center gap-1 active:scale-95 transition-all"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                          <span>Approve Upgrade</span>
+                        </button>
+                        <button
+                          onClick={() => handleDismissUpgradeRequest(req)}
+                          className="px-3 py-1.5 rounded-full bg-surface-container hover:bg-red-600 hover:text-white text-on-surface-variant font-label-sm text-label-sm font-bold transition-all"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Platform Level Metric Pods */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1636,7 +1779,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ onSelectTenantDa
                         </p>
                       </div>
                       <button
-                        onClick={() => handleRegenerateKey(managingTenant.id)}
+                        onClick={() => handleRegenerateKey(managingTenant)}
                         className="px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface font-bold text-xs tactile-btn flex items-center gap-1.5"
                       >
                         <span className="material-symbols-outlined text-[16px]">key</span>

@@ -16,6 +16,8 @@ import { ProfileView } from './views/ProfileView';
 import { PushGeoStudioView } from './views/PushGeoStudioView';
 import { PrivacyPolicyView } from './views/PrivacyPolicyView';
 import { TermsOfServiceView } from './views/TermsOfServiceView';
+import { AnalyticsView } from './views/AnalyticsView';
+import { SettingsView } from './views/SettingsView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
 
 import {
@@ -37,6 +39,17 @@ export default function App() {
   });
   const isSuperAdmin = userRole === 'super_admin' || userRole === 'admin';
   const [currentPath, setCurrentPath] = useState<NavigationPath>(() => {
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const viewParam = (params?.get('view') || '').trim().toLowerCase();
+    const storeParam = (params?.get('store') || params?.get('slug') || '').trim();
+
+    if (viewParam === 'enroll' || viewParam === 'join' || storeParam) {
+      return 'customer-join';
+    }
+    if (viewParam === 'privacy') return 'privacy';
+    if (viewParam === 'terms') return 'terms';
+    if (viewParam === 'login' || viewParam === 'signin' || viewParam === 'auth') return 'merchant-auth';
+
     const token = getAuthToken();
     const savedRole = localStorage.getItem(AUTH_ROLE_KEY);
     if (!token || !savedRole) return 'landing';
@@ -45,6 +58,7 @@ export default function App() {
     return 'landing';
   });
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
+  const [selectedPosMemberId, setSelectedPosMemberId] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Multi-Tenant Context State (no hardcoded cross-tenant fallback)
@@ -56,7 +70,15 @@ export default function App() {
   });
   const [tenants, setTenants] = useState<Array<{ id: string; slug: string; name: string; logoUrl?: string; brandColor?: string }>>([]);
 
+  const isAuthenticated = Boolean(getAuthToken());
   const isLanding = currentPath === 'landing';
+  const isPublicShell =
+    isLanding ||
+    (!isAuthenticated &&
+      (currentPath === 'customer-join' ||
+        currentPath === 'merchant-auth' ||
+        currentPath === 'privacy' ||
+        currentPath === 'terms'));
 
   // Guard /super-admin: Non-admins CANNOT see or access the admin page
   useEffect(() => {
@@ -181,8 +203,11 @@ export default function App() {
     setIsScannerOpen(true);
   };
 
-  const handleScanSuccess = () => {
-    setToastMessage('Optical Pass Scan Confirmed: Member perks applied!');
+  const handleScanSuccess = (memberId?: string) => {
+    if (memberId) {
+      setSelectedPosMemberId(memberId);
+    }
+    setToastMessage('Optical Pass Scan Confirmed: Member loaded in POS!');
     setCurrentPath('pos-cashier');
     setTimeout(() => setToastMessage(null), 3500);
   };
@@ -230,8 +255,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f7f9fc] text-[#191c1e] font-sans antialiased">
-      {/* Fixed Left Navigation Sidebar & Top Header - STRICTLY HIDDEN ON LANDING PAGE */}
-      {!isLanding && (
+      {/* Fixed Left Navigation Sidebar & Top Header - STRICTLY HIDDEN ON PUBLIC SHELL VIEWS */}
+      {!isPublicShell && (
         <>
           <Navigation
             currentPath={currentPath}
@@ -249,14 +274,55 @@ export default function App() {
             onNavigateToAuth={() => setCurrentPath('merchant-auth')}
             onNavigateToProfile={() => setCurrentPath('profile')}
             onNavigateToAdmin={() => setCurrentPath('super-admin')}
+            onSelectMemberForPos={(memberId) => {
+              setSelectedPosMemberId(memberId);
+              setCurrentPath('pos-cashier');
+            }}
+            onNavigateView={handleNavigate}
             onLogout={handleLogout}
             userRole={userRole}
           />
         </>
       )}
 
+      {/* Minimal Public Top Bar when unauthenticated outside Landing */}
+      {isPublicShell && !isLanding && (
+        <header className="w-full max-w-5xl mx-auto px-4 pt-5 flex items-center justify-between gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.location.search) {
+                window.history.replaceState({}, '', window.location.pathname);
+              }
+              setCurrentPath('landing');
+            }}
+            className="px-4 py-2 rounded-full bg-surface-container-low tactile-convex-sm text-on-surface font-label-md text-label-md font-bold flex items-center gap-2 hover:text-[#ff5722] transition-colors"
+          >
+            <span className="material-symbols-outlined text-[18px] text-[#ff5722]">fingerprint</span>
+            <span>PassLoyal OS</span>
+          </button>
+          {currentPath !== 'merchant-auth' && (
+            <button
+              type="button"
+              onClick={() => setCurrentPath('merchant-auth')}
+              className="px-4 py-2 rounded-full bg-surface-container-low tactile-convex-sm text-on-surface-variant hover:text-[#ff5722] font-label-md text-label-md font-semibold transition-colors"
+            >
+              Merchant Sign In
+            </button>
+          )}
+        </header>
+      )}
+
       {/* Main View Container */}
-      <main className={isLanding ? "w-full" : "pl-28 lg:pl-32 pr-6 pt-24 max-w-[1600px] mx-auto transition-all pb-12"}>
+      <main
+        className={
+          isLanding
+            ? 'w-full'
+            : isPublicShell
+            ? 'w-full px-4 pt-4 max-w-5xl mx-auto transition-all pb-12'
+            : 'pl-28 lg:pl-32 pr-6 pt-24 max-w-[1600px] mx-auto transition-all pb-12'
+        }
+      >
         {currentPath === 'landing' && (
           <LandingPageView
             onLoginSuccess={handleLoginSuccess}
@@ -291,6 +357,7 @@ export default function App() {
             activeSlug={activeTenantSlug}
             userRole={userRole}
             openScannerModal={openScanner}
+            selectedMemberId={selectedPosMemberId}
           />
         )}
 
@@ -378,28 +445,18 @@ export default function App() {
           />
         )}
 
-        {(currentPath === 'reports' || currentPath === 'settings') && (
-          <div className="p-8 bg-surface-container-low rounded-xl tactile-card flex flex-col gap-4 max-w-2xl mx-auto text-center my-12">
-            <div className="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center text-primary-container text-3xl mx-auto tactile-btn">
-              <span className="material-symbols-outlined text-[32px]">
-                {currentPath === 'reports' ? 'analytics' : 'settings'}
-              </span>
-            </div>
-            <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
-              {currentPath === 'reports' ? 'Analytics & Telemetry Reports' : 'System Terminal Settings'}
-            </h2>
-            <p className="font-body-md text-body-md text-on-surface-variant">
-              PassLoyal OS Node #01 • Cryptographic HMAC-SHA256 Encryption Active. All terminal telemetry channels are operational.
-            </p>
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                onClick={() => setCurrentPath('dashboard')}
-                className="px-5 py-2.5 rounded-full bg-primary-container text-on-primary font-label-md text-label-md font-bold tactile-glow"
-              >
-                Return to Dashboard
-              </button>
-            </div>
-          </div>
+        {currentPath === 'reports' && (
+          <AnalyticsView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
+          />
+        )}
+
+        {currentPath === 'settings' && (
+          <SettingsView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
+          />
         )}
 
         {/* Legal & Compliance Footer Bar */}
@@ -444,6 +501,8 @@ export default function App() {
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onScanSuccess={handleScanSuccess}
+        activeSlug={activeTenantSlug}
+        userRole={userRole}
       />
 
       {/* Global Notification Toast */}

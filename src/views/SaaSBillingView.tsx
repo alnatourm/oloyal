@@ -106,7 +106,22 @@ export const SaaSBillingView: React.FC<SaaSBillingViewProps> = ({
   const handleSelectPlan = async (planId: 'starter' | 'growth' | 'scale') => {
     sounds.chime();
     if (!isSuperAdmin) {
-      setNotice(`Upgrade request for ${planId.toUpperCase()} noted — contact Super Admin to change package limits.`);
+      if (activeSlug && getAuthToken()) {
+        try {
+          const res = await authFetch(`/api/tenants/${encodeURIComponent(activeSlug)}/upgrade-request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan: planId, billingCycle }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            setNotice(data.message || `Upgrade request for ${planId.toUpperCase()} (${billingCycle}) sent to Super Admin.`);
+            setTimeout(() => setNotice(null), 3500);
+            return;
+          }
+        } catch {}
+      }
+      setNotice(`Upgrade request for ${planId.toUpperCase()} noted — contact Super Admin to activate.`);
       setTimeout(() => setNotice(null), 3500);
       return;
     }

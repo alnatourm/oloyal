@@ -44,6 +44,77 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
     plan: string;
   } | null>(null);
 
+  // Self-serve Forgot Password state
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify'>('request');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetCodeInput, setResetCodeInput] = useState('');
+  const [newResetPassword, setNewResetPassword] = useState('');
+  const [forgotMsg, setForgotMsg] = useState<string | null>(null);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
+
+  const handleRequestResetCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+    setForgotMsg(null);
+    setIsResetting(true);
+    sounds.click();
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Unable to send reset code.');
+      }
+      setForgotMsg(data.message || 'Check your email for the 6-digit verification code.');
+      setForgotStep('verify');
+      sounds.chime();
+    } catch (err: any) {
+      setForgotError(err.message || 'Reset request failed.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleCompleteReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+    setForgotMsg(null);
+    setIsResetting(true);
+    sounds.click();
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmail.trim().toLowerCase(),
+          code: resetCodeInput.trim(),
+          newPassword: newResetPassword,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to reset password.');
+      }
+      sounds.chime();
+      setIdentifier(forgotEmail.trim().toLowerCase());
+      setPassword('');
+      setForgotMode(false);
+      setForgotStep('request');
+      setResetCodeInput('');
+      setNewResetPassword('');
+      setLoginError(null);
+    } catch (err: any) {
+      setForgotError(err.message || 'Password reset failed.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   // Unified Sign In Handler: automatically detects Admin vs Merchant by credentials
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,8 +378,115 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
               </button>
             </div>
 
-            {/* TAB 1: UNIFIED SIGN IN (Admin coordinates automatically log in as Admin, Merchant as Merchant) */}
-            {tab === 'signin' && (
+            {/* TAB 1: UNIFIED SIGN IN OR FORGOT PASSWORD */}
+            {tab === 'signin' && forgotMode && (
+              <div className="flex flex-col gap-4 relative z-10">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-sm text-on-surface">
+                    {forgotStep === 'request' ? 'Reset Merchant Password' : 'Verify Code & Set Password'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.click();
+                      setForgotMode(false);
+                      setForgotStep('request');
+                      setForgotError(null);
+                      setForgotMsg(null);
+                    }}
+                    className="text-xs font-bold text-outline hover:text-on-surface"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+
+                {forgotStep === 'request' ? (
+                  <form onSubmit={handleRequestResetCode} className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
+                        Registered Store Owner Email
+                      </label>
+                      <div className="h-11 px-4 rounded-xl bg-surface tactile-deboss flex items-center">
+                        <span className="material-symbols-outlined text-outline text-[18px] mr-2">mail</span>
+                        <input
+                          required
+                          type="email"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          placeholder="owner@yourstore.com"
+                          className="bg-transparent w-full font-body-md text-body-md text-on-surface focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    {forgotError && (
+                      <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+                        {forgotError}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={isResetting}
+                      className="w-full py-3 rounded-full bg-[#ff5722] text-white font-bold text-sm tactile-glow flex items-center justify-center gap-2"
+                    >
+                      <span>{isResetting ? 'Generating Code...' : 'Send 6-Digit Reset Code'}</span>
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleCompleteReset} className="flex flex-col gap-3">
+                    {forgotMsg && (
+                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-700 font-medium">
+                        {forgotMsg}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1">
+                      <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
+                        6-Digit Verification Code
+                      </label>
+                      <div className="h-11 px-4 rounded-xl bg-surface tactile-deboss flex items-center">
+                        <input
+                          required
+                          type="text"
+                          value={resetCodeInput}
+                          onChange={(e) => setResetCodeInput(e.target.value)}
+                          placeholder="123456"
+                          className="bg-transparent w-full font-mono text-body-md text-on-surface focus:outline-none tracking-widest"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
+                        New Password (min 8 chars)
+                      </label>
+                      <div className="h-11 px-4 rounded-xl bg-surface tactile-deboss flex items-center">
+                        <input
+                          required
+                          minLength={8}
+                          type="password"
+                          value={newResetPassword}
+                          onChange={(e) => setNewResetPassword(e.target.value)}
+                          placeholder="New secure password"
+                          className="bg-transparent w-full font-body-md text-body-md text-on-surface focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    {forgotError && (
+                      <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+                        {forgotError}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={isResetting}
+                      className="w-full py-3 rounded-full bg-[#ff5722] text-white font-bold text-sm tactile-glow"
+                    >
+                      {isResetting ? 'Updating Password...' : 'Save New Password'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {tab === 'signin' && !forgotMode && (
               <form onSubmit={handleSignIn} className="flex flex-col gap-4 relative z-10">
                 <div className="flex flex-col gap-1.5">
                   <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
@@ -321,16 +499,30 @@ export const MerchantAuthView: React.FC<MerchantAuthViewProps> = ({
                       type="text"
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="e.g. alnatour.m@gmail.com or banlis"
+                      placeholder="owner@yourstore.com or store-slug"
                       className="bg-transparent w-full font-body-md text-body-md text-on-surface focus:outline-none"
                     />
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
-                    Password
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="font-label-sm text-label-sm uppercase tracking-wider text-outline font-semibold">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sounds.click();
+                        setForgotMode(true);
+                        setForgotEmail(identifier.includes('@') ? identifier : '');
+                        setForgotError(null);
+                      }}
+                      className="text-xs font-semibold text-[#ff5722] hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                   <div className="h-11 px-4 rounded-xl bg-surface tactile-deboss flex items-center">
                     <span className="material-symbols-outlined text-outline text-[18px] mr-2">lock</span>
                     <input
