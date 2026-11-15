@@ -27,6 +27,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     { path: 'pass-studio', title: 'Pass Studio / Designer', icon: 'palette' },
     { path: 'pos-cashier', title: 'POS Cashier Terminal', icon: 'point_of_sale' },
     { path: 'customers-crm', title: 'Customers / CRM', icon: 'group' },
+    { path: 'push-and-geo-studio', title: 'Push & Geo Studio', icon: 'near_me' },
     { path: 'customer-join', title: 'Customer Enrollment (Add to Wallet)', icon: 'add_to_home_screen' },
     { path: 'onboarding', title: 'Merchant Onboarding', icon: 'tune' },
     { path: 'billing', title: 'SaaS Billing & Limits', icon: 'credit_card' },
@@ -38,12 +39,12 @@ export const Navigation: React.FC<NavigationProps> = ({
   const navItems = allNavItems.filter((item) => !item.adminOnly || isSuperAdmin);
 
   return (
-    <aside className="fixed left-4 lg:left-6 top-6 bottom-6 w-20 z-50 flex flex-col items-center justify-between py-6 bg-surface-container-low rounded-xl tactile-convex transition-all">
-      <div className="flex flex-col items-center gap-6 w-full">
+    <aside className="fixed left-4 lg:left-6 top-6 bottom-6 w-20 z-50 flex flex-col items-center justify-between py-5 bg-surface-container-low rounded-xl tactile-convex transition-all">
+      <div className="flex flex-col items-center gap-4 w-full min-h-0">
         {/* Brand Logo Button */}
         <button
           onClick={() => handleNav('dashboard')}
-          className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center tactile-convex-sm transition-transform active:scale-95 group"
+          className="w-11 h-11 shrink-0 rounded-full bg-surface-container flex items-center justify-center tactile-convex-sm transition-transform active:scale-95 group"
           title="PassLoyal OS Home"
         >
           <span className="material-symbols-outlined text-[#ff5722] text-[24px] group-hover:rotate-12 transition-transform">
@@ -51,10 +52,10 @@ export const Navigation: React.FC<NavigationProps> = ({
           </span>
         </button>
 
-        <div className="w-8 h-1 rounded-full bg-surface-container-highest"></div>
+        <div className="w-8 h-1 shrink-0 rounded-full bg-surface-container-highest"></div>
 
         {/* Navigation Items */}
-        <nav className="flex flex-col items-center gap-3.5 w-full px-2">
+        <nav className="flex flex-col items-center gap-2.5 w-full px-2 overflow-y-auto py-1">
           {navItems.map((item) => {
             const isActive = currentPath === item.path;
             return (
@@ -62,13 +63,13 @@ export const Navigation: React.FC<NavigationProps> = ({
                 key={item.path}
                 onClick={() => handleNav(item.path)}
                 title={item.title}
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+                className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center transition-all duration-200 ${
                   isActive
                     ? 'bg-[#ff5722] text-white tactile-active-glow shadow-[0_0_16px_rgba(255,87,34,0.45)] scale-105'
                     : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface tactile-btn'
                 }`}
               >
-                <span className="material-symbols-outlined text-[22px]">
+                <span className="material-symbols-outlined text-[21px]">
                   {item.icon}
                 </span>
               </button>

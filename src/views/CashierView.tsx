@@ -75,6 +75,34 @@ export const CashierView: React.FC<CashierViewProps> = ({
         .catch(() => {});
     }
 
+    const cfgUrl =
+      isSuperAdmin && activeSlug
+        ? `/api/program-config?slug=${encodeURIComponent(activeSlug)}`
+        : '/api/program-config';
+    authFetch(cfgUrl)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.config?.earnVelocity) {
+          setEarnVelocity(Number(data.config.earnVelocity));
+        }
+        if (Array.isArray(data.coupons)) {
+          const activeCoupons: LoyaltyPerk[] = data.coupons
+            .filter((c: any) => c.active !== false)
+            .map((c: any) => ({
+              id: c.id,
+              title: c.title,
+              pointsCost: Number(c.pointsCost || 0),
+              discountAmount: Number(c.discountAmount || 0),
+              icon: c.icon || 'redeem',
+              category: c.code || 'coupon',
+              active: false,
+            }));
+          setPerks(activeCoupons);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -86,48 +114,22 @@ export const CashierView: React.FC<CashierViewProps> = ({
   const [orderItems] = useState<OrderItem[]>([
     {
       id: '1',
-      name: 'Artisanal Ceramic Dripper Set',
-      subtitle: 'Porcelain Glaze • Matte',
+      name: 'Standard Basket Order',
+      subtitle: 'Storefront POS Line Item',
       qty: 1,
-      price: 38.0,
+      price: 35.0,
     },
     {
       id: '2',
-      name: 'Single Origin Geisha Beans (250g)',
-      subtitle: 'Whole Roast • Micro-lot',
-      qty: 2,
-      price: 22.0,
-    },
-    {
-      id: '3',
-      name: 'Organic Oat Blossom Flat White',
-      subtitle: 'Medium • House Blend',
+      name: 'Featured Add-On',
+      subtitle: 'Counter Checkout Item',
       qty: 1,
-      price: 5.0,
+      price: 20.0,
     },
   ]);
 
-  // Perks
-  const [perks, setPerks] = useState<LoyaltyPerk[]>([
-    {
-      id: 'p1',
-      title: '-$10.00 OFF',
-      pointsCost: 300,
-      discountAmount: 10.0,
-      icon: 'percent',
-      category: 'discount',
-      active: true,
-    },
-    {
-      id: 'p2',
-      title: 'Free Brew',
-      pointsCost: 150,
-      discountAmount: 4.5,
-      icon: 'coffee',
-      category: 'beverage',
-      active: false,
-    },
-  ]);
+  const [earnVelocity, setEarnVelocity] = useState<number>(10);
+  const [perks, setPerks] = useState<LoyaltyPerk[]>([]);
 
   const grossTotal = orderItems.reduce((acc, item) => acc + item.price * item.qty, 0);
   const totalDiscount = perks.filter((p) => p.active).reduce((acc, p) => acc + p.discountAmount, 0);
@@ -194,14 +196,19 @@ export const CashierView: React.FC<CashierViewProps> = ({
       return;
     }
 
-    const earnedPts = Math.max(1, Math.round(currentTotal));
+    const earnedPts = Math.max(1, Math.round(currentTotal * earnVelocity));
+    const redeemedCost = perks.filter((p) => p.active).reduce((acc, p) => acc + p.pointsCost, 0);
+    const netDelta = earnedPts - redeemedCost;
     try {
       const res = await authFetch(`/api/members/${encodeURIComponent(activeMember.id)}/points`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          points: earnedPts,
-          reason: `POS Checkout ($${currentTotal.toFixed(2)})`,
+          points: netDelta,
+          reason:
+            redeemedCost > 0
+              ? `POS Checkout ($${currentTotal.toFixed(2)}, +${earnedPts} / -${redeemedCost} coupon pts)`
+              : `POS Checkout ($${currentTotal.toFixed(2)} @ ${earnVelocity} pts/$1)`,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -368,39 +375,47 @@ export const CashierView: React.FC<CashierViewProps> = ({
                   Tap to Toggle
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {perks.map((perk) => (
-                  <button
-                    key={perk.id}
-                    onClick={() => togglePerk(perk.id)}
-                    className={`flex items-center gap-3 p-3 rounded-full text-left group transition-all ${
-                      perk.active
-                        ? 'bg-surface-container tactile-deboss border border-primary-container/30'
-                        : 'bg-surface-container tactile-btn opacity-85'
-                    }`}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${
+              {perks.length === 0 ? (
+                <div className="p-4 rounded-lg bg-surface-container text-center">
+                  <p className="font-body-sm text-body-sm text-on-surface-variant">
+                    No active coupons configured for {storeName} yet. Create coupons in Loyalty Program Rules.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {perks.map((perk) => (
+                    <button
+                      key={perk.id}
+                      onClick={() => togglePerk(perk.id)}
+                      className={`flex items-center gap-3 p-3 rounded-full text-left group transition-all ${
                         perk.active
-                          ? 'bg-primary-container text-on-primary tactile-glow'
-                          : 'bg-surface-container-high text-on-surface-variant'
+                          ? 'bg-surface-container tactile-deboss border border-primary-container/30'
+                          : 'bg-surface-container tactile-btn opacity-85'
                       }`}
                     >
-                      <span className="material-symbols-outlined text-[16px]">
-                        {perk.icon}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-label-md text-label-md text-on-surface font-bold truncate">
-                        {perk.title}
-                      </p>
-                      <p className="font-label-sm text-label-sm text-on-surface-variant">
-                        {perk.pointsCost} pts
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${
+                          perk.active
+                            ? 'bg-primary-container text-on-primary tactile-glow'
+                            : 'bg-surface-container-high text-on-surface-variant'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">
+                          {perk.icon}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-label-md text-label-md text-on-surface font-bold truncate">
+                          {perk.title}
+                        </p>
+                        <p className="font-label-sm text-label-sm text-on-surface-variant">
+                          {perk.pointsCost} pts
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

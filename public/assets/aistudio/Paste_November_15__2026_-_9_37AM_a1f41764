@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"secondary-container":"#fe6f42","secondary-fixed":"#ffdbd0","surface":"#f7f9fc","on-primary-fixed":"#3b0900","primary":"#b02f00","on-tertiary":"#ffffff","error":"#ba1a1a","tertiary-container":"#007caf","on-primary-container":"#541200","surface-dim":"#d8dadd","on-error-container":"#93000a","surface-container":"#eceef1","inverse-surface":"#2d3133","tertiary-fixed":"#c8e6ff","surface-tint":"#b02f00","surface-variant":"#e0e3e6","on-tertiary-fixed":"#001e2e","on-secondary-fixed-variant":"#852300","surface-bright":"#f7f9fc","on-secondary-container":"#631800","on-surface":"#191c1e","outline":"#907067","on-tertiary-fixed-variant":"#004c6d","on-primary":"#ffffff","surface-container-highest":"#e0e3e6","on-primary-fixed-variant":"#862200","surface-container-high":"#e6e8eb","tertiary":"#00628c","on-tertiary-container":"#fcfcff","surface-container-low":"#f2f4f7","on-secondary-fixed":"#3a0a00","error-container":"#ffdad6","on-error":"#ffffff","surface-container-lowest":"#ffffff","inverse-on-surface":"#eff1f4","outline-variant":"#e4beb4","on-secondary":"#ffffff","primary-fixed":"#ffdbd1","background":"#f7f9fc","secondary-fixed-dim":"#ffb59f","primary-fixed-dim":"#ffb5a0","primary-container":"#ff5722","secondary":"#ac3509","tertiary-fixed-dim":"#86cfff","on-background":"#191c1e","inverse-primary":"#ffb5a0","on-surface-variant":"#5b4039"},borderRadius:{DEFAULT:"1rem",lg:"2rem",xl:"3rem",full:"9999px"},spacing:{"gutter-mobile":"1rem",margin:"2.5rem","margin-mobile":"1.25rem","space-xl":"2.5rem","space-lg":"1.5rem","space-xs":"0.25rem","space-md":"1rem",gutter:"1.5rem","space-sm":"0.5rem","space-2xl":"4rem"},fontFamily:{"display-xl":["Inter"],"headline-md":["Inter"],"headline-sm":["Inter"],"headline-lg":["Inter"],"label-md":["Inter"],"body-lg":["Inter"],"label-lg":["Inter"],"headline-lg-mobile":["Inter"],"body-md":["Inter"],"body-sm":["Inter"],"label-sm":["Inter"],"display-xl-mobile":["Inter"]},fontSize:{"display-xl":["56px",{lineHeight:"64px",letterSpacing:"-0.03em",fontWeight:"300"}],"headline-md":["20px",{lineHeight:"28px",letterSpacing:"-0.01em",fontWeight:"600"}],"headline-sm":["16px",{lineHeight:"24px",letterSpacing:"0em",fontWeight:"600"}],"headline-lg":["32px",{lineHeight:"40px",letterSpacing:"-0.02em",fontWeight:"500"}],"label-md":["11px",{lineHeight:"16px",letterSpacing:"0.06em",fontWeight:"600"}],"body-lg":["16px",{lineHeight:"24px",letterSpacing:"0em",fontWeight:"400"}],"label-lg":["13px",{lineHeight:"18px",letterSpacing:"0.04em",fontWeight:"600"}],"headline-lg-mobile":["24px",{lineHeight:"32px",letterSpacing:"-0.01em",fontWeight:"500"}],"body-md":["14px",{lineHeight:"20px",letterSpacing:"0em",fontWeight:"400"}],"body-sm":["12px",{lineHeight:"16px",letterSpacing:"0.01em",fontWeight:"400"}],"label-sm":["10px",{lineHeight:"14px",letterSpacing:"0.08em",fontWeight:"700"}],"display-xl-mobile":["36px",{lineHeight:"44px",letterSpacing:"-0.02em",fontWeight:"300"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-72 bg-surface-container-low z-50 flex flex-col justify-between py-space-lg shadow-[-8px_0_24px_rgba(209,217,230,0.4)]"><div class="flex flex-col px-space-md"><div class="flex items-center gap-space-sm px-space-sm mb-space-xl"><div class="w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center shadow-[-3px_-3px_7px_#FFFFFF,3px_3px_7px_#D1D9E6]"><span class="material-symbols-outlined text-primary-container">wallet</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">PassLoyal</span><span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mt-0.5">Wallet Engine</span></div></div><nav class="flex flex-col gap-space-xs" data-active-classes="bg-surface-container-lowest text-primary shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6]"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all duration-200" data-path="dashboard" href="#"><span class="material-symbols-outlined text-[20px]">space_dashboard</span><span>Dashboard</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all duration-200" data-path="pass-studio" href="#"><span class="material-symbols-outlined text-[20px]">style</span><span>Pass Studio</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all duration-200" data-path="pos-terminal" href="#"><span class="material-symbols-outlined text-[20px]">point_of_sale</span><span>POS Terminal</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all duration-200" data-path="customers-crm" href="#"><span class="material-symbols-outlined text-[20px]">group</span><span>Customers CRM</span></a><a aria-current="page" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg transition-all duration-200 bg-surface-container-lowest text-primary shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6]" data-path="push-and-geo-studio" href="#"><span class="material-symbols-outlined text-[20px]">near_me</span><span>Push & Geo Studio</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all duration-200" data-path="analytics" href="#"><span class="material-symbols-outlined text-[20px]">query_stats</span><span>Analytics</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all duration-200" data-path="settings" href="#"><span class="material-symbols-outlined text-[20px]">tune</span><span>Settings</span></a></nav></div><div class="px-space-md"><div class="p-space-md rounded-lg bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] flex items-center justify-between"><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">NFC Gateway</span></div><span class="font-label-md text-label-md text-primary font-semibold">Ready</span></div></div></aside><div class="pl-72"><header class="fixed top-0 left-72 right-0 h-20 bg-surface/80 backdrop-blur-xl z-40 px-space-lg flex items-center justify-between shadow-[0_1px_8px_rgba(0,0,0,0.03)]"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-sm px-space-md py-space-xs bg-surface-container-lowest rounded-full shadow-[-3px_-3px_6px_#FFFFFF,3px_3px_6px_#D1D9E6]"><span class="material-symbols-outlined text-primary-container text-[18px]">storefront</span><span class="font-headline-sm text-headline-sm text-on-surface">Banlis Bistro</span></div><div class="flex items-center gap-space-xs px-space-md py-space-xs bg-surface-container-low rounded-full shadow-[inset_2px_2px_5px_#D1D9E6,inset_-2px_-2px_5px_#FFFFFF]"><span class="w-2 h-2 rounded-full bg-primary-container"></span><span class="font-label-sm text-label-sm text-on-surface-variant font-medium">Smart Tap v3.2</span><span class="font-label-sm text-label-sm text-primary uppercase font-bold ml-1">Live</span></div></div><div class="flex items-center gap-space-md"><div class="relative flex items-center w-80 px-space-md py-space-xs bg-surface-container-low rounded-full shadow-[inset_3px_3px_6px_#D1D9E6,inset_-3px_-3px_6px_#FFFFFF]"><span class="material-symbols-outlined text-on-surface-variant text-[18px] mr-space-xs">search</span><input class="w-full bg-transparent border-0 outline-none font-body-sm text-body-sm text-on-surface placeholder:text-on-surface-variant/70" placeholder="Search passes, customers, logs..." type="text"/></div><div class="flex items-center gap-space-sm pl-space-xs"><button class="w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-on-surface-variant shadow-[-3px_-3px_6px_#FFFFFF,3px_3px_6px_#D1D9E6] hover:text-on-surface transition-all" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span></button><button class="w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-on-surface-variant shadow-[-3px_-3px_6px_#FFFFFF,3px_3px_6px_#D1D9E6] hover:text-on-surface transition-all" type="button"><span class="material-symbols-outlined text-[20px]">help_outline</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-20 px-space-lg bg-surface min-h-screen"><div class="flex flex-col w-full pb-space-2xl space-y-space-xl">
+<!-- Top Studio Action Header Bar -->
+<section class="w-full bg-surface-container-lowest rounded-xl p-space-lg shadow-[-10px_-10px_20px_#FFFFFF,10px_10px_24px_#D1D9E6] flex flex-col xl:flex-row items-start xl:items-center justify-between gap-space-lg">
+<div class="flex flex-col lg:flex-row items-start lg:items-center gap-space-md w-full xl:w-auto">
+<div class="w-14 h-14 rounded-full bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] flex items-center justify-center text-primary-container shrink-0">
+<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">near_me</span>
+</div>
+<div class="flex flex-col space-y-1 w-full max-w-xl">
+<div class="flex items-center gap-space-sm flex-wrap">
+<input class="bg-transparent font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight outline-none focus:text-primary transition-colors w-full md:w-auto" id="campaign-title-input" type="text" value="Autumn Truffle Weekend & Happy Hour Boost"/>
+<span class="px-space-sm py-0.5 rounded-full bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF] font-label-sm text-label-sm text-primary uppercase font-bold tracking-wider flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container animate-ping"></span>
+            Draft • Active Geo
+          </span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-space-xs">
+<span>Google Wallet Smart Tap Proximity Push</span>
+<span>•</span>
+<span class="text-tertiary font-medium">Broadcast Channel 04 (Eddystone & Geofence)</span>
+</p>
+</div>
+</div>
+<!-- Audience Segment Selector Pill & Primary Actions -->
+<div class="flex flex-wrap items-center gap-space-md w-full xl:w-auto justify-end">
+<!-- Debossed Pill Container for Segments -->
+<div class="p-1 rounded-full bg-surface-container-low shadow-[inset_3px_3px_6px_#D1D9E6,inset_-3px_-3px_6px_#FFFFFF] flex items-center gap-1">
+<button class="audience-btn px-space-md py-space-xs rounded-full font-label-md text-label-md bg-surface-container-lowest text-primary shadow-[-2px_-2px_5px_#FFFFFF,2px_2px_5px_#D1D9E6] transition-all" type="button">
+          All Active (3,842)
+        </button>
+<button class="audience-btn px-space-md py-space-xs rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all" type="button">
+          Gold VIPs (412)
+        </button>
+<button class="audience-btn px-space-md py-space-xs rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all" type="button">
+          Lapsed >14d (684)
+        </button>
+</div>
+<!-- Action Buttons -->
+<div class="flex items-center gap-space-sm">
+<button class="px-space-md py-space-sm rounded-full bg-surface-container-lowest font-label-lg text-label-lg text-on-surface shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] active:shadow-[inset_3px_3px_6px_#D1D9E6,inset_-3px_-3px_6px_#FFFFFF] hover:text-primary transition-all flex items-center gap-space-xs" id="btn-test-push" type="button">
+<span class="material-symbols-outlined text-[18px]">cell_tower</span>
+<span>Test Push</span>
+</button>
+<button class="px-space-lg py-space-sm rounded-full bg-primary-container text-on-primary font-label-lg text-label-lg shadow-[-4px_-4px_12px_rgba(255,255,255,0.8),4px_4px_14px_rgba(176,47,0,0.35)] hover:shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),2px_2px_18px_rgba(255,87,34,0.6)] active:scale-95 transition-all flex items-center gap-space-xs" id="btn-dispatch" type="button">
+<span>Dispatch Campaign</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+</section>
+<!-- 3-Column Cockpit Grid (Porcelain Aesthetic) -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
+<!-- Column 1: Geo-Fencing & Proximity Beacon Setup (4 Cols) -->
+<div class="lg:col-span-4 flex flex-col space-y-space-lg">
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-[-8px_-8px_18px_#FFFFFF,8px_8px_18px_#D1D9E6] space-y-space-lg">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary-container text-[22px]">radar</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Spatial Radar & Beacons</span>
+</div>
+<span class="w-3 h-3 rounded-full bg-secondary-container shadow-[0_0_8px_#fe6f42]"></span>
+</div>
+<!-- Venue Pin Debossed Card -->
+<div class="p-space-md rounded-lg bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-full bg-surface-container-lowest shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] flex items-center justify-center text-primary-container">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-lg text-label-lg text-on-surface font-semibold">Banlis Bistro & Wine Bar</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Downtown 4th Ave • District 01</span>
+</div>
+</div>
+<button class="w-7 h-7 rounded-full bg-surface-container-lowest shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] flex items-center justify-center text-on-surface-variant hover:text-primary" type="button">
+<span class="material-symbols-outlined text-[14px]">edit</span>
+</button>
+</div>
+<!-- Stylized Porcelain Radar Screen -->
+<div class="relative w-full aspect-square max-h-[300px] rounded-xl bg-surface-container-low shadow-[inset_6px_6px_14px_#D1D9E6,inset_-6px_-6px_14px_#FFFFFF] overflow-hidden flex items-center justify-center p-4">
+<!-- Subtle Topo/Grid Lines -->
+<svg class="absolute inset-0 w-full h-full opacity-30 stroke-outline-variant pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+<line stroke-dasharray="4 4" stroke-width="1" x1="0" x2="100%" y1="50%" y2="50%"></line>
+<line stroke-dasharray="4 4" stroke-width="1" x1="50%" x2="50%" y1="0" y2="100%"></line>
+<circle cx="50%" cy="50%" fill="none" r="28%" stroke-width="1"></circle>
+<circle cx="50%" cy="50%" fill="none" r="48%" stroke-width="1"></circle>
+<circle cx="50%" cy="50%" fill="none" r="70%" stroke-width="1"></circle>
+</svg>
+<!-- Animated Concentric Pulse Rings for Geo-Fence -->
+<div class="absolute w-48 h-48 rounded-full bg-primary-container/10 border-2 border-primary-container/40 animate-ping" style="animation-duration: 3.5s;"></div>
+<div class="absolute w-40 h-40 rounded-full bg-gradient-to-r from-primary-container/20 to-secondary-container/15 shadow-[0_0_30px_rgba(255,87,34,0.3)] transition-all duration-500" id="radar-pulse-ring"></div>
+<!-- Active Beacon Nodes on Map -->
+<div class="absolute top-[28%] left-[34%] flex flex-col items-center">
+<span class="w-2.5 h-2.5 rounded-full bg-tertiary-container shadow-[0_0_6px_#007caf]"></span>
+<span class="font-label-sm text-[9px] text-tertiary font-bold mt-0.5">B-01 Front</span>
+</div>
+<div class="absolute bottom-[30%] right-[32%] flex flex-col items-center">
+<span class="w-2.5 h-2.5 rounded-full bg-tertiary-container shadow-[0_0_6px_#007caf]"></span>
+<span class="font-label-sm text-[9px] text-tertiary font-bold mt-0.5">B-02 Terrace</span>
+</div>
+<!-- Central Pivot Node (Bistro) -->
+<div class="relative z-10 w-12 h-12 rounded-full bg-surface-container-lowest shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] flex items-center justify-center text-primary-container cursor-pointer">
+<span class="material-symbols-outlined text-[24px]">storefront</span>
+<div class="absolute -bottom-6 px-2 py-0.5 rounded-full bg-surface-container-lowest shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] whitespace-nowrap">
+<span class="font-label-sm text-[10px] font-bold text-on-surface">Target Center</span>
+</div>
+</div>
+<div class="absolute top-3 right-3 px-space-sm py-1 rounded-full bg-surface-container-lowest shadow-[-2px_-2px_5px_#FFFFFF,2px_2px_5px_#D1D9E6] flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container animate-pulse"></span>
+<span class="font-label-sm text-label-sm text-primary font-bold" id="map-radius-badge">300m Active</span>
+</div>
+</div>
+<!-- Proximity Radius 3D Rotary Selector -->
+<div class="flex flex-col space-y-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-lg text-label-lg text-on-surface font-semibold">Proximity Radius Range</span>
+<span class="font-label-lg text-label-lg text-primary font-bold" id="radius-text-value">300 Meters</span>
+</div>
+<!-- Custom Tactile Step Rail -->
+<div class="p-1 rounded-full bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] grid grid-cols-3 gap-1">
+<button class="radius-toggle py-space-xs rounded-full font-label-sm text-label-sm text-on-surface-variant transition-all hover:text-on-surface flex flex-col items-center" data-radius="150" type="button">
+<span class="font-bold">150m</span>
+<span class="text-[9px] opacity-75">Curbside</span>
+</button>
+<button class="radius-toggle py-space-xs rounded-full font-label-sm text-label-sm bg-surface-container-lowest text-primary shadow-[-2px_-2px_6px_#FFFFFF,2px_2px_6px_#D1D9E6] font-bold transition-all flex flex-col items-center" data-radius="300" type="button">
+<span class="font-bold">300m</span>
+<span class="text-[9px] opacity-75">District</span>
+</button>
+<button class="radius-toggle py-space-xs rounded-full font-label-sm text-label-sm text-on-surface-variant transition-all hover:text-on-surface flex flex-col items-center" data-radius="750" type="button">
+<span class="font-bold">750m</span>
+<span class="text-[9px] opacity-75">Metro Zone</span>
+</button>
+</div>
+</div>
+<!-- Trigger Logic Selector -->
+<div class="flex flex-col space-y-space-xs">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-bold">Trigger Rule</span>
+<div class="space-y-space-xs">
+<label class="p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF] flex items-center justify-between cursor-pointer transition-all">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary-container text-[18px]">login</span>
+<span class="font-body-md text-body-md text-on-surface font-medium">On Entry (Crosses Boundary)</span>
+</div>
+<input checked="" class="accent-primary-container w-4 h-4 cursor-pointer" name="trigger_rule" type="radio"/>
+</label>
+<label class="p-space-sm rounded-lg bg-surface-container-lowest shadow-[-2px_-2px_5px_#FFFFFF,2px_2px_5px_#D1D9E6] flex items-center justify-between cursor-pointer hover:bg-surface-container-high transition-all">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">timer</span>
+<span class="font-body-md text-body-md text-on-surface">Dwell Time (>5m within radius)</span>
+</div>
+<input class="accent-primary-container w-4 h-4 cursor-pointer" name="trigger_rule" type="radio"/>
+</label>
+<label class="p-space-sm rounded-lg bg-surface-container-lowest shadow-[-2px_-2px_5px_#FFFFFF,2px_2px_5px_#D1D9E6] flex items-center justify-between cursor-pointer hover:bg-surface-container-high transition-all">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">logout</span>
+<span class="font-body-md text-body-md text-on-surface">On Exit (Leaving Vicinity)</span>
+</div>
+<input class="accent-primary-container w-4 h-4 cursor-pointer" name="trigger_rule" type="radio"/>
+</label>
+</div>
+</div>
+<!-- Hardware BLE Sync Footer Badge -->
+<div class="p-space-md rounded-lg bg-surface-container-low shadow-[inset_3px_3px_7px_#D1D9E6,inset_-3px_-3px_7px_#FFFFFF] flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-tertiary-container text-[20px]">bluetooth_searching</span>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Eddystone / Smart Tap</span>
+<span class="font-label-sm text-[10px] text-tertiary font-medium">3 BLE Radios In Sync</span>
+</div>
+</div>
+<span class="px-space-xs py-0.5 rounded-full bg-surface-container-lowest shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] font-label-sm text-[10px] text-primary font-bold">100% ONLINE</span>
+</div>
+</div>
+<!-- Cooldown & Frequency Throttle Porcelain Card -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-[-8px_-8px_18px_#FFFFFF,8px_8px_18px_#D1D9E6] space-y-space-md">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm text-on-surface">Guardrails & Quiet Hours</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">shield</span>
+</div>
+<div class="space-y-space-sm font-body-sm text-body-sm">
+<div class="flex items-center justify-between p-space-xs px-space-sm rounded-lg bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF]">
+<span class="text-on-surface-variant">Fatigue Throttle</span>
+<span class="font-label-md text-label-md text-on-surface font-semibold">1 Push / 48 hrs / Pass</span>
+</div>
+<div class="flex items-center justify-between p-space-xs px-space-sm rounded-lg bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF]">
+<span class="text-on-surface-variant">Active Window</span>
+<span class="font-label-md text-label-md text-on-surface font-semibold">11:30 AM – 10:00 PM</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 2: Google Wallet Push Notification Composer (4 Cols) -->
+<div class="lg:col-span-4 flex flex-col space-y-space-lg">
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-[-8px_-8px_18px_#FFFFFF,8px_8px_18px_#D1D9E6] space-y-space-lg">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary-container text-[22px]">edit_note</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Wallet Message Composer</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase font-bold tracking-wider">v3.2 API</span>
+</div>
+<!-- Composer Inputs Well -->
+<div class="space-y-space-md">
+<!-- Pass Header / Brand Identity Readout -->
+<div class="flex flex-col space-y-1">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold">Target Pass Identifier</label>
+<div class="p-space-sm rounded-lg bg-surface-container-low shadow-[inset_3px_3px_6px_#D1D9E6,inset_-3px_-3px_6px_#FFFFFF] flex items-center justify-between">
+<span class="font-body-md text-body-md text-on-surface font-semibold">Banlis Bistro • Loyalty Pass</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">Class ID: #BISTRO-994</span>
+</div>
+</div>
+<!-- Push Title Input -->
+<div class="flex flex-col space-y-1">
+<div class="flex items-center justify-between">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold" for="input-push-title">Notification Title</label>
+<span class="font-label-sm text-[10px] text-on-surface-variant" id="title-char-count">42 / 60</span>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] flex items-center gap-space-xs focus-within:shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF,0_0_8px_rgba(255,87,34,0.4)] transition-all">
+<input class="w-full bg-transparent border-0 outline-none font-body-md text-body-md text-on-surface font-semibold placeholder:text-on-surface-variant/50" id="input-push-title" type="text" value="🔥 Double Points Tonight & Free Aperitivo"/>
+</div>
+</div>
+<!-- Push Message Body Textarea -->
+<div class="flex flex-col space-y-1">
+<div class="flex items-center justify-between">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold" for="input-push-body">Lockscreen Body Snippet</label>
+<span class="font-label-sm text-[10px] text-on-surface-variant" id="body-char-count">98 / 140</span>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] focus-within:shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF,0_0_8px_rgba(255,87,34,0.4)] transition-all">
+<textarea class="w-full bg-transparent border-0 outline-none font-body-md text-body-md text-on-surface resize-none leading-relaxed placeholder:text-on-surface-variant/50" id="input-push-body" rows="3">Marcus, tap your Google Wallet pass at the bar between 5-7 PM tonight for 2x points on all reserve cocktails!</textarea>
+</div>
+</div>
+<!-- Dynamic Pass Graphic Hero Banner Toggle -->
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-9 h-9 rounded-full bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF] flex items-center justify-center text-primary-container">
+<span class="material-symbols-outlined text-[20px]">panorama</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-lg text-label-lg text-on-surface font-semibold">Update Pass Hero Art</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Syncs Autumn Truffle visual</span>
+</div>
+</div>
+<!-- Tactile 3D Switch -->
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" id="toggle-hero-sync" type="checkbox"/>
+<div class="w-12 h-6 bg-surface-container-low rounded-full shadow-[inset_3px_3px_6px_#D1D9E6,inset_-3px_-3px_6px_#FFFFFF] peer-checked:bg-primary-container peer-checked:shadow-[0_0_12px_rgba(255,87,34,0.4)] transition-all relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-surface-container-lowest after:rounded-full after:h-5 after:w-5 after:shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] after:transition-all peer-checked:after:translate-x-6"></div>
+</label>
+</div>
+<!-- Deep Link Action Selector -->
+<div class="flex flex-col space-y-1">
+<label class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold">Lockscreen Action Button Link</label>
+<div class="grid grid-cols-2 gap-space-sm">
+<button class="action-link-btn p-space-sm rounded-lg bg-surface-container-lowest font-label-md text-label-md text-primary shadow-[-3px_-3px_7px_#FFFFFF,3px_3px_7px_#D1D9E6] flex items-center justify-center gap-1" type="button">
+<span class="material-symbols-outlined text-[16px]">menu_book</span>
+<span>View Tasting Menu</span>
+</button>
+<button class="action-link-btn p-space-sm rounded-lg bg-surface-container-low font-label-md text-label-md text-on-surface-variant hover:text-on-surface shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF] flex items-center justify-center gap-1" type="button">
+<span class="material-symbols-outlined text-[16px]">table_bar</span>
+<span>Reserve Table</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Trigger Cadence Dial Section -->
+<div class="flex flex-col space-y-space-sm pt-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-lg text-label-lg text-on-surface font-semibold">Delivery Cadence</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">Autonomous Smart Trigger</span>
+</div>
+<div class="p-space-sm rounded-xl bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] grid grid-cols-3 gap-2">
+<div class="p-2 rounded-lg bg-surface-container-lowest shadow-[-2px_-2px_5px_#FFFFFF,2px_2px_5px_#D1D9E6] text-center cursor-pointer">
+<span class="font-label-sm text-[10px] text-primary uppercase font-bold block">Live Proximity</span>
+<span class="font-label-md text-label-md text-on-surface">Auto-Ping</span>
+</div>
+<div class="p-2 rounded-lg bg-transparent text-center cursor-pointer hover:bg-surface-container-high transition-colors">
+<span class="font-label-sm text-[10px] text-on-surface-variant uppercase font-bold block">Fixed Slot</span>
+<span class="font-label-md text-label-md text-on-surface">5:00 PM</span>
+</div>
+<div class="p-2 rounded-lg bg-transparent text-center cursor-pointer hover:bg-surface-container-high transition-colors">
+<span class="font-label-sm text-[10px] text-on-surface-variant uppercase font-bold block">Point Milestone</span>
+<span class="font-label-md text-label-md text-on-surface">Near Gold</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Quick Tips Card -->
+<div class="p-space-md rounded-xl bg-surface-container-low shadow-[inset_4px_4px_8px_#D1D9E6,inset_-4px_-4px_8px_#FFFFFF] flex items-start gap-space-sm">
+<span class="material-symbols-outlined text-primary text-[20px] shrink-0 mt-0.5">info</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+          Google Wallet passes bypass standard junk filters. Proximity notifications stay persistent on Android ambient lockscreens while the customer is within the <strong class="text-on-surface">300m beacon umbrella</strong>.
+        </p>
+</div>
+</div>
+<!-- Column 3: Live Android 14 Lockscreen Simulator & Metrics (4 Cols) -->
+<div class="lg:col-span-4 flex flex-col space-y-space-lg">
+<!-- Realistic Android 14 Google Wallet Lockscreen Frame -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-[-10px_-10px_24px_#FFFFFF,10px_10px_24px_#D1D9E6] flex flex-col items-center">
+<div class="w-full flex items-center justify-between mb-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary-container text-[20px]">phone_android</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Pixel Lockscreen Feed</span>
+</div>
+<span class="font-label-sm text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF] text-on-surface-variant">Live Preview</span>
+</div>
+<!-- Android Outer Chassis -->
+<div class="w-full max-w-[320px] rounded-xl p-3 bg-surface-container-low shadow-[inset_6px_6px_14px_#D1D9E6,inset_-6px_-6px_14px_#FFFFFF] flex flex-col items-center">
+<!-- Phone Bezel & Screen -->
+<div class="w-full rounded-lg bg-gradient-to-b from-surface to-surface-container-high p-4 shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] flex flex-col justify-between min-h-[460px] relative overflow-hidden">
+<!-- Lockscreen Top Bar (Camera Notch & Icons) -->
+<div class="w-full flex items-center justify-between text-on-surface-variant">
+<span class="font-label-sm text-[11px] font-semibold">Google Fi</span>
+<div class="w-3.5 h-3.5 rounded-full bg-surface-dim shadow-[inset_1px_1px_2px_#D1D9E6]"></div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">wifi</span>
+<span class="material-symbols-outlined text-[13px]">battery_full</span>
+</div>
+</div>
+<!-- Android 14 Clock & Subtitle -->
+<div class="flex flex-col items-center my-3 text-center">
+<span class="font-display-xl text-display-xl font-light text-on-surface tracking-tighter leading-none">05:15</span>
+<span class="font-label-md text-label-md text-on-surface-variant font-medium mt-1">Thursday, Oct 24 • 19°C</span>
+</div>
+<!-- Native Google Wallet Push Notification Card -->
+<div class="w-full rounded-lg bg-surface-container-lowest shadow-[-3px_-3px_8px_#FFFFFF,3px_3px_8px_#D1D9E6] p-space-sm space-y-2 border-l-4 border-primary-container transition-all">
+<!-- App / Pass Identity -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-bold text-[10px]">
+                    B
+                  </div>
+<span class="font-label-sm text-[11px] font-bold text-on-surface">Banlis Bistro</span>
+<span class="text-on-surface-variant text-[10px]">• 2m ago</span>
+</div>
+<span class="material-symbols-outlined text-primary-container text-[14px]">wallet</span>
+</div>
+<!-- Push Content -->
+<div class="flex flex-col space-y-0.5">
+<span class="font-label-lg text-label-lg font-bold text-on-surface line-clamp-1 leading-snug" id="preview-title">
+                  🔥 Double Points Tonight & Free Aperitivo
+                </span>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2 leading-tight" id="preview-body">
+                  Marcus, tap your Google Wallet pass at the bar between 5-7 PM tonight for 2x points on all reserve cocktails!
+                </p>
+</div>
+<!-- Lockscreen Notification Action Button -->
+<div class="pt-1 flex items-center gap-2">
+<button class="px-space-sm py-1 rounded-full bg-surface-container-low shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] font-label-sm text-[10px] text-primary font-bold flex items-center gap-1" type="button">
+<span>Open Pass</span>
+<span class="material-symbols-outlined text-[12px]">contactless</span>
+</button>
+<span class="font-label-sm text-[10px] text-on-surface-variant">View Menu</span>
+</div>
+</div>
+<!-- Bottom Lockscreen Quick Access Dial (Smart Tap Quick Chip) -->
+<div class="w-full flex items-center justify-between pt-4 mt-auto">
+<div class="w-9 h-9 rounded-full bg-surface-container-lowest shadow-[-3px_-3px_6px_#FFFFFF,3px_3px_6px_#D1D9E6] flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">flashlight_on</span>
+</div>
+<!-- Subtle Smart Tap Indicator -->
+<div class="flex items-center gap-1 px-space-sm py-1 rounded-full bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF]">
+<span class="material-symbols-outlined text-primary text-[14px]">nfc</span>
+<span class="font-label-sm text-[9px] font-bold text-on-surface">Hold Near Reader</span>
+</div>
+<div class="w-9 h-9 rounded-full bg-surface-container-lowest shadow-[-3px_-3px_6px_#FFFFFF,3px_3px_6px_#D1D9E6] flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">photo_camera</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Projected Campaign Reach & Conversion Gauge Card -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-[-8px_-8px_18px_#FFFFFF,8px_8px_18px_#D1D9E6] space-y-space-md">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm text-on-surface">Estimated Tap Impact</span>
+<span class="material-symbols-outlined text-primary-container text-[20px]">query_stats</span>
+</div>
+<div class="grid grid-cols-2 gap-space-md">
+<!-- Metric 1 -->
+<div class="p-space-md rounded-xl bg-surface-container-low shadow-[inset_3px_3px_7px_#D1D9E6,inset_-3px_-3px_7px_#FFFFFF] flex flex-col">
+<span class="font-label-sm text-[10px] text-on-surface-variant uppercase font-bold">Audience Reach</span>
+<span class="font-headline-lg text-headline-lg font-bold text-on-surface mt-1">3,842</span>
+<span class="font-body-sm text-[11px] text-primary mt-0.5 font-medium">94% Instant Delivery</span>
+</div>
+<!-- Metric 2 -->
+<div class="p-space-md rounded-xl bg-surface-container-low shadow-[inset_3px_3px_7px_#D1D9E6,inset_-3px_-3px_7px_#FFFFFF] flex flex-col">
+<span class="font-label-sm text-[10px] text-on-surface-variant uppercase font-bold">Lockscreen Open Rate</span>
+<span class="font-headline-lg text-headline-lg font-bold text-secondary mt-1">78.4%</span>
+<span class="font-body-sm text-[11px] text-on-surface-variant mt-0.5 font-medium">Material 14 Ambient</span>
+</div>
+</div>
+<!-- Inline Target Attribution Progress Arc Bar -->
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Predicted Tap Uplift</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">+140 Evening Bar Transactions</span>
+</div>
+<!-- Tactile Mini Progress Arc -->
+<div class="relative w-12 h-12 flex items-center justify-center">
+<svg class="w-12 h-12 -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-container-high stroke-current" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-width="3.5"></path>
+<path class="text-primary-container stroke-current" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-dasharray="82, 100" stroke-linecap="round" stroke-width="3.5"></path>
+</svg>
+<span class="absolute font-label-sm text-[10px] font-bold text-on-surface">+82%</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Bar: Active Proximity Campaigns Feed -->
+<section class="w-full bg-surface-container-lowest rounded-xl p-space-lg shadow-[-10px_-10px_20px_#FFFFFF,10px_10px_24px_#D1D9E6] space-y-space-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-full bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF] flex items-center justify-center text-primary-container">
+<span class="material-symbols-outlined text-[18px]">stream</span>
+</div>
+<div>
+<span class="font-headline-sm text-headline-sm text-on-surface">Live Autonomous Geo-Campaigns</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant block">Hardware BLE beacon triggers active for Banlis Bistro</span>
+</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="font-label-md text-label-md text-on-surface-variant font-medium">Gateway Auto-Sweep:</span>
+<span class="px-space-sm py-0.5 rounded-full bg-surface-container-low shadow-[inset_2px_2px_4px_#D1D9E6,inset_-2px_-2px_4px_#FFFFFF] font-label-sm text-label-sm text-primary font-bold">100ms Ping</span>
+</div>
+</div>
+<!-- Grouped Porcelain List of Active Triggers -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-md pt-space-xs">
+<!-- Live Card 1 -->
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] flex flex-col justify-between space-y-space-sm hover:shadow-[-6px_-6px_14px_#FFFFFF,6px_6px_14px_#D1D9E6] transition-all">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-primary-container shadow-[0_0_8px_#ff5722]"></span>
+<span class="font-label-lg text-label-lg text-on-surface font-semibold">Lunch Rush Proximity</span>
+</div>
+<span class="font-label-sm text-[10px] uppercase font-bold text-primary">Active</span>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span>Boundary: 300m District</span>
+<span class="font-bold text-on-surface">89 Taps Today</span>
+</div>
+<div class="pt-space-xs flex items-center justify-between">
+<span class="font-label-sm text-[10px] text-on-surface-variant">Last ping: 4m ago</span>
+<button class="w-7 h-7 rounded-full bg-surface-container-low shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] flex items-center justify-center text-on-surface-variant hover:text-primary" type="button">
+<span class="material-symbols-outlined text-[14px]">pause</span>
+</button>
+</div>
+</div>
+<!-- Live Card 2 -->
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] flex flex-col justify-between space-y-space-sm hover:shadow-[-6px_-6px_14px_#FFFFFF,6px_6px_14px_#D1D9E6] transition-all">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-primary-container shadow-[0_0_8px_#ff5722]"></span>
+<span class="font-label-lg text-label-lg text-on-surface font-semibold">VIP Welcome Back Alert</span>
+</div>
+<span class="font-label-sm text-[10px] uppercase font-bold text-primary">Active</span>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span>Boundary: 500m Sub-zone</span>
+<span class="font-bold text-on-surface">24 Diners Re-engaged</span>
+</div>
+<div class="pt-space-xs flex items-center justify-between">
+<span class="font-label-sm text-[10px] text-on-surface-variant">Last ping: 12m ago</span>
+<button class="w-7 h-7 rounded-full bg-surface-container-low shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] flex items-center justify-center text-on-surface-variant hover:text-primary" type="button">
+<span class="material-symbols-outlined text-[14px]">pause</span>
+</button>
+</div>
+</div>
+<!-- Live Card 3 -->
+<div class="p-space-md rounded-xl bg-surface-container-lowest shadow-[-4px_-4px_10px_#FFFFFF,4px_4px_10px_#D1D9E6] flex flex-col justify-between space-y-space-sm hover:shadow-[-6px_-6px_14px_#FFFFFF,6px_6px_14px_#D1D9E6] transition-all">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-secondary-container"></span>
+<span class="font-label-lg text-label-lg text-on-surface font-semibold">Happy Hour Flash Promo</span>
+</div>
+<span class="font-label-sm text-[10px] uppercase font-bold text-secondary">Scheduled</span>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span>Boundary: 150m Street</span>
+<span class="font-bold text-on-surface">Starts 5:00 PM</span>
+</div>
+<div class="pt-space-xs flex items-center justify-between">
+<span class="font-label-sm text-[10px] text-on-surface-variant">Trigger: Boundary Entry</span>
+<button class="w-7 h-7 rounded-full bg-surface-container-low shadow-[-2px_-2px_4px_#FFFFFF,2px_2px_4px_#D1D9E6] flex items-center justify-center text-on-surface-variant hover:text-primary" type="button">
+<span class="material-symbols-outlined text-[14px]">tune</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</div>
+<script>
+  (function () {
+    // 1. Live Input Sync with Android Lockscreen Preview
+    const titleInput = document.getElementById('input-push-title');
+    const bodyInput = document.getElementById('input-push-body');
+    const previewTitle = document.getElementById('preview-title');
+    const previewBody = document.getElementById('preview-body');
+    const titleCharCount = document.getElementById('title-char-count');
+    const bodyCharCount = document.getElementById('body-char-count');
+
+    if (titleInput && previewTitle) {
+      titleInput.addEventListener('input', function () {
+        previewTitle.textContent = this.value || 'Banlis Bistro Notification';
+        if (titleCharCount) titleCharCount.textContent = this.value.length + ' / 60';
+      });
+    }
+
+    if (bodyInput && previewBody) {
+      bodyInput.addEventListener('input', function () {
+        previewBody.textContent = this.value || 'Tap your pass at Banlis Bistro.';
+        if (bodyCharCount) bodyCharCount.textContent = this.value.length + ' / 140';
+      });
+    }
+
+    // 2. Proximity Radius Stepper Interactivity
+    const radiusButtons = document.querySelectorAll('.radius-toggle');
+    const radiusText = document.getElementById('radius-text-value');
+    const radarBadge = document.getElementById('map-radius-badge');
+    const radarPulse = document.getElementById('radar-pulse-ring');
+
+    radiusButtons.forEach(btn => {
+      btn.addEventListener('click', function () {
+        radiusButtons.forEach(b => {
+          b.className = 'radius-toggle py-space-xs rounded-full font-label-sm text-label-sm text-on-surface-variant transition-all hover:text-on-surface flex flex-col items-center';
+        });
+        this.className = 'radius-toggle py-space-xs rounded-full font-label-sm text-label-sm bg-surface-container-lowest text-primary shadow-[-2px_-2px_6px_#FFFFFF,2px_2px_6px_#D1D9E6] font-bold transition-all flex flex-col items-center';
+        
+        const rad = this.dataset.radius;
+        if (radiusText) radiusText.textContent = rad + ' Meters';
+        if (radarBadge) radarBadge.textContent = rad + 'm Active';
+
+        if (radarPulse) {
+          if (rad === '150') {
+            radarPulse.style.width = '100px';
+            radarPulse.style.height = '100px';
+          } else if (rad === '300') {
+            radarPulse.style.width = '160px';
+            radarPulse.style.height = '160px';
+          } else {
+            radarPulse.style.width = '240px';
+            radarPulse.style.height = '240px';
+          }
+        }
+      });
+    });
+
+    // 3. Audience Segment Buttons Selection
+    const audienceBtns = document.querySelectorAll('.audience-btn');
+    audienceBtns.forEach(btn => {
+      btn.addEventListener('click', function () {
+        audienceBtns.forEach(b => {
+          b.className = 'audience-btn px-space-md py-space-xs rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all';
+        });
+        this.className = 'audience-btn px-space-md py-space-xs rounded-full font-label-md text-label-md bg-surface-container-lowest text-primary shadow-[-2px_-2px_5px_#FFFFFF,2px_2px_5px_#D1D9E6] transition-all';
+      });
+    });
+
+    // 4. Test Push Notification Micro-interaction
+    const testPushBtn = document.getElementById('btn-test-push');
+    if (testPushBtn) {
+      testPushBtn.addEventListener('click', function () {
+        const origText = this.innerHTML;
+        this.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">sync</span><span>Sent to Pixel 8 Pro!</span>';
+        this.classList.add('text-primary');
+        setTimeout(() => {
+          this.innerHTML = origText;
+          this.classList.remove('text-primary');
+        }, 2200);
+      });
+    }
+
+    // 5. Dispatch Primary Button Confirmation
+    const dispatchBtn = document.getElementById('btn-dispatch');
+    if (dispatchBtn) {
+      dispatchBtn.addEventListener('click', function () {
+        const origText = this.innerHTML;
+        this.innerHTML = '<span class="material-symbols-outlined text-[18px]">verified</span><span>3,842 Beacons Active</span>';
+        setTimeout(() => {
+          this.innerHTML = origText;
+        }, 2500);
+      });
+    }
+  })();
+</script></main></div></body></html>

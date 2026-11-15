@@ -1456,28 +1456,52 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
   const memberPhone = phone ? String(phone).trim() : '';
   const memberEmail = email ? String(email).trim() : '';
 
+  let welcomePoints = 100;
+  let customProgramName = `${tenant.name} Loyalty`;
+  let barcodeMode: 'barcode' | 'qr' = 'barcode';
+  try {
+    await ensureProgramTables();
+    const cfgRows = await sql`
+      SELECT program_name, welcome_active, welcome_grant, barcode_mode
+      FROM program_configs
+      WHERE tenant_id = ${tenant.id}
+      LIMIT 1;
+    `;
+    if (cfgRows.length > 0) {
+      if (cfgRows[0].program_name) customProgramName = cfgRows[0].program_name;
+      welcomePoints = cfgRows[0].welcome_active ? Number(cfgRows[0].welcome_grant ?? 100) : 0;
+      if (cfgRows[0].barcode_mode === 'qr') barcodeMode = 'qr';
+    }
+  } catch {}
+
+  if (typeof req.body?.initialPoints === 'number' && !isNaN(req.body.initialPoints)) {
+    welcomePoints = Math.max(0, Math.round(req.body.initialPoints));
+  }
+
   let insertedMember: any = null;
   try {
     const rows = await sql`
       INSERT INTO members (id, tenant_id, name, phone, email, member_id, points, balance_cents, google_object_id)
-      VALUES (${uuid}, ${tenant.id}, ${memberName}, ${memberPhone}, ${memberEmail}, ${memberIdCode}, 100, 0, ${objectId})
+      VALUES (${uuid}, ${tenant.id}, ${memberName}, ${memberPhone}, ${memberEmail}, ${memberIdCode}, ${welcomePoints}, 0, ${objectId})
       RETURNING *;
     `;
     if (rows.length > 0) {
       insertedMember = rows[0];
     }
 
-    const txId = `tx-${Date.now()}`;
-    try {
-      await sql`
-        INSERT INTO point_transactions (id, member_id, change_amount, reason)
-        VALUES (${txId}, ${uuid}, 100, 'Welcome Bonus');
-      `;
-    } catch {
-      await sql`
-        INSERT INTO point_transactions (id, member_id, tenant_id, change_amount, reason)
-        VALUES (${txId}, ${uuid}, ${tenant.id}, 100, 'Welcome Bonus');
-      `;
+    if (welcomePoints > 0) {
+      const txId = `tx-${Date.now()}`;
+      try {
+        await sql`
+          INSERT INTO point_transactions (id, member_id, change_amount, reason)
+          VALUES (${txId}, ${uuid}, ${welcomePoints}, 'Welcome Bonus');
+        `;
+      } catch {
+        await sql`
+          INSERT INTO point_transactions (id, member_id, tenant_id, change_amount, reason)
+          VALUES (${txId}, ${uuid}, ${tenant.id}, ${welcomePoints}, 'Welcome Bonus');
+        `;
+      }
     }
   } catch (err: any) {
     console.error('[Neon Postgres] INSERT member error:', err);
@@ -1491,7 +1515,7 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
     email: memberEmail,
     phone: memberPhone,
     member_id: memberIdCode,
-    points: 100,
+    points: welcomePoints,
     balance_cents: 0,
     google_object_id: objectId,
   };
@@ -1506,7 +1530,7 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
   const loyaltyClass = {
     id: tenant.class_id,
     issuerName: tenant.name,
-    programName: `${tenant.name} Loyalty`,
+    programName: customProgramName,
     programLogo: {
       sourceUri: { uri: logoUri },
       contentDescription: {
@@ -1526,18 +1550,18 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
     accountId: memberIdCode,
     accountName: memberName,
     barcode: {
-      type: 'QR_CODE',
+      type: barcodeMode === 'barcode' ? 'CODE_128' : 'QR_CODE',
       value: memberIdCode,
       alternateText: memberIdCode,
     },
     loyaltyPoints: {
       label: 'Points',
-      balance: { int: 100 },
+      balance: { int: welcomePoints },
     },
     textModulesData: [
       { id: 'mod_member', header: 'MEMBER', body: memberName },
       { id: 'mod_phone', header: 'PHONE', body: memberPhone || memberIdCode },
-      { id: 'mod_points', header: 'POINTS', body: '100 Points - Welcome Bonus' },
+      { id: 'mod_points', header: 'POINTS', body: `${welcomePoints} Points - Welcome Bonus` },
     ],
   };
 
@@ -1545,13 +1569,18 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
   if (req.headers.origin) requestOrigins.push(String(req.headers.origin));
   if (req.headers.referer) requestOrigins.push(String(req.headers.referer));
 
-  const signedJwtToken = signGoogleWalletJwt(
-    { loyaltyClasses: [loyaltyClass], loyaltyObjects: [loyaltyObject] },
-    SERVICE_ACCOUNT_EMAIL,
-    PRIVATE_KEY_PEM,
-    requestOrigins
-  );
-  const saveToWalletUrl = `https://pay.google.com/gp/v/save/${signedJwtToken}`;
+  let saveToWalletUrl: string | null = null;
+  try {
+    const signedJwtToken = signGoogleWalletJwt(
+      { loyaltyClasses: [loyaltyClass], loyaltyObjects: [loyaltyObject] },
+      SERVICE_ACCOUNT_EMAIL,
+      PRIVATE_KEY_PEM || process.env.GOOGLE_PRIVATE_KEY,
+      requestOrigins
+    );
+    saveToWalletUrl = `https://pay.google.com/gp/v/save/${signedJwtToken}`;
+  } catch (jwtErr: any) {
+    console.warn('[Enrollment JWT Warning]:', jwtErr?.message || 'Google Wallet key unavailable');
+  }
 
   return res.status(201).json({
     success: true,
@@ -1563,8 +1592,8 @@ async function enrollMemberForTenant(tenant: TenantRow, req: Request, res: Respo
       customerName: memberName,
       email: memberEmail,
       phone: memberPhone,
-      points: 100,
-      tier: 'SILVER',
+      points: welcomePoints,
+      tier: welcomePoints >= 2000 ? 'PLATINUM' : welcomePoints >= 1000 ? 'GOLD VIP' : 'SILVER',
       jwtUrl: saveToWalletUrl,
       syncedAt: new Date().toISOString(),
     },
@@ -1795,6 +1824,696 @@ app.get('/api/tenants/:id/billing', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Neon Postgres] GET billing error:', err);
     return res.status(500).json({ error: 'Database connection failed' });
+  }
+});
+
+// Geo-Campaigns & Smart Tap Proximity Push Endpoints (Strictly Tenant-Isolated)
+async function ensureGeoCampaignsTable() {
+  if (!sql) return;
+  await sql`
+    CREATE TABLE IF NOT EXISTS geo_campaigns (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      push_title TEXT NOT NULL,
+      push_body TEXT NOT NULL,
+      segment TEXT DEFAULT 'all',
+      radius_meters INT DEFAULT 300,
+      trigger_rule TEXT DEFAULT 'entry',
+      cadence TEXT DEFAULT 'proximity',
+      action_label TEXT DEFAULT 'View Offer',
+      venue_label TEXT DEFAULT '',
+      hero_sync BOOLEAN DEFAULT TRUE,
+      status TEXT DEFAULT 'Active',
+      taps_today INT DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `;
+}
+
+function mapGeoCampaignRow(r: any) {
+  return {
+    id: r.id,
+    tenantId: r.tenant_id,
+    storeName: r.store_name || '',
+    storeSlug: r.store_slug || '',
+    title: r.title,
+    pushTitle: r.push_title,
+    pushBody: r.push_body,
+    segment: r.segment || 'all',
+    radiusMeters: Number(r.radius_meters || 300),
+    triggerRule: r.trigger_rule || 'entry',
+    cadence: r.cadence || 'proximity',
+    actionLabel: r.action_label || 'View Offer',
+    venueLabel: r.venue_label || '',
+    heroSync: Boolean(r.hero_sync),
+    status: r.status || 'Active',
+    tapsToday: Number(r.taps_today || 0),
+    createdAt: r.created_at || new Date().toISOString(),
+  };
+}
+
+app.get('/api/geo-campaigns', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  try {
+    await ensureGeoCampaignsTable();
+    const adminSlug = isAdminRole(auth.role) && typeof req.query?.slug === 'string' ? req.query.slug.trim() : '';
+
+    const rows = !isAdminRole(auth.role)
+      ? await sql`
+          SELECT g.*, t.name as store_name, t.slug as store_slug
+          FROM geo_campaigns g
+          JOIN tenants t ON g.tenant_id = t.id
+          WHERE g.tenant_id = ${auth.tenantId}
+          ORDER BY g.created_at DESC;
+        `
+      : adminSlug
+      ? await sql`
+          SELECT g.*, t.name as store_name, t.slug as store_slug
+          FROM geo_campaigns g
+          JOIN tenants t ON g.tenant_id = t.id
+          WHERE t.slug = ${adminSlug} OR t.id = ${adminSlug}
+          ORDER BY g.created_at DESC;
+        `
+      : await sql`
+          SELECT g.*, t.name as store_name, t.slug as store_slug
+          FROM geo_campaigns g
+          JOIN tenants t ON g.tenant_id = t.id
+          ORDER BY g.created_at DESC;
+        `;
+
+    return res.status(200).json(rows.map(mapGeoCampaignRow));
+  } catch (err: any) {
+    console.error('[Neon Postgres] GET /api/geo-campaigns error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to load geo campaigns' });
+  }
+});
+
+app.post('/api/geo-campaigns', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const body = req.body || {};
+  const title = String(body.title || '').trim();
+  const pushTitle = String(body.pushTitle || '').trim();
+  const pushBody = String(body.pushBody || '').trim();
+
+  if (!title || !pushTitle || !pushBody) {
+    return res.status(400).json({ error: 'Campaign title, notification title, and body are required' });
+  }
+
+  const segment = ['all', 'vip', 'silver'].includes(String(body.segment || '').toLowerCase())
+    ? String(body.segment).toLowerCase()
+    : 'all';
+  const radiusMeters = [150, 300, 750].includes(Number(body.radiusMeters)) ? Number(body.radiusMeters) : 300;
+  const triggerRule = ['entry', 'dwell', 'exit'].includes(String(body.triggerRule || '').toLowerCase())
+    ? String(body.triggerRule).toLowerCase()
+    : 'entry';
+  const cadence = ['proximity', 'fixed', 'milestone'].includes(String(body.cadence || '').toLowerCase())
+    ? String(body.cadence).toLowerCase()
+    : 'proximity';
+  const actionLabel = String(body.actionLabel || 'View Offer').trim().slice(0, 60);
+  const venueLabel = String(body.venueLabel || '').trim().slice(0, 120);
+  const heroSync = body.heroSync !== undefined ? Boolean(body.heroSync) : true;
+  const status = String(body.status || (cadence === 'fixed' ? 'Scheduled' : 'Active')).trim();
+
+  try {
+    await ensureGeoCampaignsTable();
+
+    let resolvedTenantId = auth.tenantId || '';
+    let storeName = '';
+    let storeSlug = '';
+
+    if (isAdminRole(auth.role)) {
+      const targetRef = String(body.slug || body.tenantSlug || body.tenantId || req.query?.slug || '').trim();
+      if (!targetRef) {
+        return res.status(400).json({ error: 'Select a target store first to dispatch a campaign' });
+      }
+      const tRows = await sql`
+        SELECT id, name, slug FROM tenants WHERE slug = ${targetRef} OR id = ${targetRef} LIMIT 1;
+      `;
+      if (tRows.length === 0) {
+        return res.status(404).json({ error: 'Target store tenant not found' });
+      }
+      resolvedTenantId = tRows[0].id;
+      storeName = tRows[0].name;
+      storeSlug = tRows[0].slug;
+    } else {
+      const tRows = await sql`
+        SELECT id, name, slug FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;
+      `;
+      if (tRows.length === 0) {
+        return res.status(404).json({ error: 'Authenticated tenant not found' });
+      }
+      resolvedTenantId = tRows[0].id;
+      storeName = tRows[0].name;
+      storeSlug = tRows[0].slug;
+    }
+
+    const id = `geo-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const inserted = await sql`
+      INSERT INTO geo_campaigns (
+        id, tenant_id, title, push_title, push_body, segment, radius_meters,
+        trigger_rule, cadence, action_label, venue_label, hero_sync, status, taps_today
+      )
+      VALUES (
+        ${id}, ${resolvedTenantId}, ${title.slice(0, 120)}, ${pushTitle.slice(0, 60)},
+        ${pushBody.slice(0, 140)}, ${segment}, ${radiusMeters}, ${triggerRule},
+        ${cadence}, ${actionLabel}, ${venueLabel}, ${heroSync}, ${status}, 0
+      )
+      RETURNING *;
+    `;
+
+    const row = { ...inserted[0], store_name: storeName, store_slug: storeSlug };
+    return res.status(201).json({
+      success: true,
+      campaign: mapGeoCampaignRow(row),
+      message: `Geo-campaign dispatched for ${storeName}`,
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] POST /api/geo-campaigns error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to dispatch geo-campaign' });
+  }
+});
+
+app.post('/api/geo-campaigns/test-push', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const body = req.body || {};
+  const segment = String(body.segment || 'all').toLowerCase();
+  const pushTitle = String(body.pushTitle || 'Wallet Pass Proximity Alert').trim();
+
+  try {
+    let targetTenant: any = null;
+    if (!isAdminRole(auth.role)) {
+      const rows = await sql`SELECT id, name, slug, class_id FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;`;
+      targetTenant = rows[0] || null;
+    } else {
+      const ref = String(body.slug || body.tenantSlug || req.query?.slug || '').trim();
+      if (ref) {
+        const rows = await sql`SELECT id, name, slug, class_id FROM tenants WHERE slug = ${ref} OR id = ${ref} LIMIT 1;`;
+        targetTenant = rows[0] || null;
+      }
+    }
+
+    if (!targetTenant) {
+      return res.status(404).json({ error: 'Target store tenant not found' });
+    }
+
+    const memberRows = await sql`
+      SELECT id, points FROM members WHERE tenant_id = ${targetTenant.id};
+    `;
+    const matchingMembers = memberRows.filter((m: any) => {
+      const pts = Number(m.points || 0);
+      if (segment === 'vip') return pts >= 1000;
+      if (segment === 'silver') return pts < 1000;
+      return true;
+    });
+
+    return res.status(200).json({
+      success: true,
+      storeName: targetTenant.name,
+      classId: targetTenant.class_id,
+      segment,
+      deliveredTo: matchingMembers.length,
+      pushTitle,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] POST /api/geo-campaigns/test-push error:', err);
+    return res.status(500).json({ error: err?.message || 'Test push dispatch failed' });
+  }
+});
+
+app.patch('/api/geo-campaigns/:id', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const { id } = req.params;
+  const body = req.body || {};
+
+  try {
+    await ensureGeoCampaignsTable();
+    const updated = !isAdminRole(auth.role)
+      ? await sql`
+          UPDATE geo_campaigns
+          SET
+            status = COALESCE(${body.status ?? null}, status),
+            title = COALESCE(${body.title ?? null}, title),
+            push_title = COALESCE(${body.pushTitle ?? null}, push_title),
+            push_body = COALESCE(${body.pushBody ?? null}, push_body),
+            radius_meters = COALESCE(${body.radiusMeters ?? null}, radius_meters),
+            trigger_rule = COALESCE(${body.triggerRule ?? null}, trigger_rule),
+            cadence = COALESCE(${body.cadence ?? null}, cadence),
+            action_label = COALESCE(${body.actionLabel ?? null}, action_label),
+            venue_label = COALESCE(${body.venueLabel ?? null}, venue_label),
+            hero_sync = COALESCE(${body.heroSync ?? null}, hero_sync)
+          WHERE id = ${id} AND tenant_id = ${auth.tenantId}
+          RETURNING *;
+        `
+      : await sql`
+          UPDATE geo_campaigns
+          SET
+            status = COALESCE(${body.status ?? null}, status),
+            title = COALESCE(${body.title ?? null}, title),
+            push_title = COALESCE(${body.pushTitle ?? null}, push_title),
+            push_body = COALESCE(${body.pushBody ?? null}, push_body),
+            radius_meters = COALESCE(${body.radiusMeters ?? null}, radius_meters),
+            trigger_rule = COALESCE(${body.triggerRule ?? null}, trigger_rule),
+            cadence = COALESCE(${body.cadence ?? null}, cadence),
+            action_label = COALESCE(${body.actionLabel ?? null}, action_label),
+            venue_label = COALESCE(${body.venueLabel ?? null}, venue_label),
+            hero_sync = COALESCE(${body.heroSync ?? null}, hero_sync)
+          WHERE id = ${id}
+          RETURNING *;
+        `;
+
+    if (updated.length === 0) {
+      return res.status(404).json({ error: 'Geo-campaign not found for active store' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      campaign: mapGeoCampaignRow(updated[0]),
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] PATCH /api/geo-campaigns/:id error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to update geo-campaign' });
+  }
+});
+
+app.delete('/api/geo-campaigns/:id', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const { id } = req.params;
+
+  try {
+    await ensureGeoCampaignsTable();
+    const deleted = !isAdminRole(auth.role)
+      ? await sql`
+          DELETE FROM geo_campaigns WHERE id = ${id} AND tenant_id = ${auth.tenantId} RETURNING id;
+        `
+      : await sql`
+          DELETE FROM geo_campaigns WHERE id = ${id} RETURNING id;
+        `;
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ error: 'Geo-campaign not found for active store' });
+    }
+
+    return res.status(200).json({ success: true, id: deleted[0].id });
+  } catch (err: any) {
+    console.error('[Neon Postgres] DELETE /api/geo-campaigns/:id error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to delete geo-campaign' });
+  }
+});
+
+// Card Program Rules & Coupons Management (Strictly Tenant-Isolated)
+async function ensureProgramTables() {
+  if (!sql) return;
+  await sql`
+    CREATE TABLE IF NOT EXISTS program_configs (
+      tenant_id TEXT PRIMARY KEY,
+      program_name TEXT NOT NULL,
+      archetype TEXT DEFAULT 'loyalty',
+      card_title TEXT DEFAULT '',
+      barcode_mode TEXT DEFAULT 'barcode',
+      welcome_active BOOLEAN DEFAULT TRUE,
+      welcome_grant INT DEFAULT 100,
+      earn_velocity INT DEFAULT 10,
+      min_floor INT DEFAULT 500,
+      tiers_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS coupons (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      subtitle TEXT DEFAULT '',
+      code TEXT DEFAULT '',
+      points_cost INT DEFAULT 500,
+      discount_amount NUMERIC(10,2) DEFAULT 5.00,
+      icon TEXT DEFAULT 'redeem',
+      active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `;
+}
+
+function defaultTiers() {
+  return [
+    { id: 'tier-silver', name: 'Silver', multiplier: 1.0, minPoints: 0, label: 'Base Rate' },
+    { id: 'tier-gold', name: 'Gold (Mid)', multiplier: 1.25, minPoints: 1500, label: '1,500 Pts' },
+    { id: 'tier-vip', name: 'VIP Plat', multiplier: 1.5, minPoints: 4000, label: '4,000 Pts' },
+  ];
+}
+
+function mapCouponRow(r: any) {
+  return {
+    id: r.id,
+    tenantId: r.tenant_id,
+    title: r.title,
+    subtitle: r.subtitle || '',
+    code: r.code || '',
+    pointsCost: Number(r.points_cost || 0),
+    discountAmount: Number(r.discount_amount || 0),
+    icon: r.icon || 'redeem',
+    active: r.active !== false,
+    createdAt: r.created_at || new Date().toISOString(),
+  };
+}
+
+async function resolveScopedTenant(auth: AuthContext, requestedRef?: string) {
+  if (!sql) return null;
+  if (!isAdminRole(auth.role)) {
+    const rows = await sql`
+      SELECT id, slug, name, logo, color, archetype, class_id, owner_name, owner_email
+      FROM tenants WHERE id = ${auth.tenantId} LIMIT 1;
+    `;
+    return rows[0] || null;
+  }
+  const ref = (requestedRef || '').trim();
+  if (!ref) return null;
+  const rows = await sql`
+    SELECT id, slug, name, logo, color, archetype, class_id, owner_name, owner_email
+    FROM tenants WHERE slug = ${ref} OR id = ${ref} LIMIT 1;
+  `;
+  return rows[0] || null;
+}
+
+app.get('/api/program-config', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  try {
+    await ensureProgramTables();
+    const ref = typeof req.query?.slug === 'string' ? req.query.slug : undefined;
+    const tenant = await resolveScopedTenant(auth, ref);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Store tenant not found' });
+    }
+
+    const cfgRows = await sql`
+      SELECT * FROM program_configs WHERE tenant_id = ${tenant.id} LIMIT 1;
+    `;
+    const couponRows = await sql`
+      SELECT * FROM coupons WHERE tenant_id = ${tenant.id} ORDER BY created_at DESC;
+    `;
+
+    const cfg = cfgRows[0];
+    const parsedTiers =
+      cfg && Array.isArray(cfg.tiers_json) && cfg.tiers_json.length > 0
+        ? cfg.tiers_json
+        : defaultTiers();
+
+    return res.status(200).json({
+      tenant: {
+        id: tenant.id,
+        slug: tenant.slug,
+        name: tenant.name,
+        brandColor: tenant.color || '#ff5722',
+        archetype: tenant.archetype || 'loyalty',
+        classId: tenant.class_id || '',
+      },
+      config: {
+        programName: cfg?.program_name || `${tenant.name} Club`,
+        archetype: cfg?.archetype || tenant.archetype || 'loyalty',
+        cardTitle: cfg?.card_title || `${tenant.name} Membership Card`,
+        barcodeMode: cfg?.barcode_mode === 'qr' ? 'qr' : 'barcode',
+        welcomeActive: cfg ? Boolean(cfg.welcome_active) : true,
+        welcomeGrant: cfg ? Number(cfg.welcome_grant ?? 100) : 100,
+        earnVelocity: cfg ? Number(cfg.earn_velocity ?? 10) : 10,
+        minFloor: cfg ? Number(cfg.min_floor ?? 500) : 500,
+        tiers: parsedTiers,
+        updatedAt: cfg?.updated_at || null,
+      },
+      coupons: couponRows.map(mapCouponRow),
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] GET /api/program-config error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to load program configuration' });
+  }
+});
+
+app.put('/api/program-config', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const body = req.body || {};
+  try {
+    await ensureProgramTables();
+    const ref = String(body.slug || body.tenantId || req.query?.slug || '');
+    const tenant = await resolveScopedTenant(auth, ref);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Target store tenant not found' });
+    }
+
+    const programName = String(body.programName || `${tenant.name} Club`).trim().slice(0, 80);
+    const archetype = ['loyalty', 'gift', 'ticket'].includes(String(body.archetype || '').toLowerCase())
+      ? String(body.archetype).toLowerCase()
+      : tenant.archetype || 'loyalty';
+    const cardTitle = String(body.cardTitle || `${tenant.name} Card`).trim().slice(0, 80);
+    const barcodeMode = body.barcodeMode === 'qr' ? 'qr' : 'barcode';
+    const welcomeActive = body.welcomeActive !== undefined ? Boolean(body.welcomeActive) : true;
+    const welcomeGrant = Math.max(0, Math.min(50000, Math.round(Number(body.welcomeGrant ?? 100))));
+    const earnVelocity = Math.max(1, Math.min(500, Math.round(Number(body.earnVelocity ?? 10))));
+    const minFloor = Math.max(50, Math.min(50000, Math.round(Number(body.minFloor ?? 500))));
+    const tiers = Array.isArray(body.tiers) && body.tiers.length > 0 ? body.tiers : defaultTiers();
+
+    if (body.storeName || body.brandColor) {
+      await sql`
+        UPDATE tenants
+        SET
+          name = COALESCE(${body.storeName ? String(body.storeName).trim() : null}, name),
+          color = COALESCE(${body.brandColor ? String(body.brandColor).trim() : null}, color),
+          archetype = ${archetype}
+        WHERE id = ${tenant.id};
+      `;
+    }
+
+    const saved = await sql`
+      INSERT INTO program_configs (
+        tenant_id, program_name, archetype, card_title, barcode_mode,
+        welcome_active, welcome_grant, earn_velocity, min_floor, tiers_json, updated_at
+      )
+      VALUES (
+        ${tenant.id}, ${programName}, ${archetype}, ${cardTitle}, ${barcodeMode},
+        ${welcomeActive}, ${welcomeGrant}, ${earnVelocity}, ${minFloor}, ${JSON.stringify(tiers)}::jsonb, NOW()
+      )
+      ON CONFLICT (tenant_id) DO UPDATE SET
+        program_name = EXCLUDED.program_name,
+        archetype = EXCLUDED.archetype,
+        card_title = EXCLUDED.card_title,
+        barcode_mode = EXCLUDED.barcode_mode,
+        welcome_active = EXCLUDED.welcome_active,
+        welcome_grant = EXCLUDED.welcome_grant,
+        earn_velocity = EXCLUDED.earn_velocity,
+        min_floor = EXCLUDED.min_floor,
+        tiers_json = EXCLUDED.tiers_json,
+        updated_at = NOW()
+      RETURNING *;
+    `;
+
+    const row = saved[0];
+    return res.status(200).json({
+      success: true,
+      config: {
+        programName: row.program_name,
+        archetype: row.archetype,
+        cardTitle: row.card_title,
+        barcodeMode: row.barcode_mode,
+        welcomeActive: Boolean(row.welcome_active),
+        welcomeGrant: Number(row.welcome_grant),
+        earnVelocity: Number(row.earn_velocity),
+        minFloor: Number(row.min_floor),
+        tiers: row.tiers_json,
+        updatedAt: row.updated_at,
+      },
+      message: 'Program rules & card configuration saved',
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] PUT /api/program-config error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to save program configuration' });
+  }
+});
+
+app.post('/api/coupons', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const body = req.body || {};
+  const title = String(body.title || '').trim();
+  if (!title) {
+    return res.status(400).json({ error: 'Coupon title is required' });
+  }
+
+  try {
+    await ensureProgramTables();
+    const ref = String(body.slug || body.tenantId || req.query?.slug || '');
+    const tenant = await resolveScopedTenant(auth, ref);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Target store tenant not found' });
+    }
+
+    const id = `cpn-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const subtitle = String(body.subtitle || 'Redeemable in-store').trim().slice(0, 120);
+    const code = String(body.code || `CPN${Math.floor(100 + Math.random() * 900)}`).trim().toUpperCase().slice(0, 24);
+    const pointsCost = Math.max(0, Math.round(Number(body.pointsCost ?? 500)));
+    const discountAmount = Math.max(0, Number(body.discountAmount ?? 5));
+    const icon = String(body.icon || 'redeem').trim().slice(0, 40);
+    const active = body.active !== undefined ? Boolean(body.active) : true;
+
+    const inserted = await sql`
+      INSERT INTO coupons (id, tenant_id, title, subtitle, code, points_cost, discount_amount, icon, active)
+      VALUES (${id}, ${tenant.id}, ${title.slice(0, 80)}, ${subtitle}, ${code}, ${pointsCost}, ${discountAmount}, ${icon}, ${active})
+      RETURNING *;
+    `;
+
+    return res.status(201).json({
+      success: true,
+      coupon: mapCouponRow(inserted[0]),
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] POST /api/coupons error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to create coupon' });
+  }
+});
+
+app.patch('/api/coupons/:id', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const { id } = req.params;
+  const body = req.body || {};
+
+  try {
+    await ensureProgramTables();
+    const updated = !isAdminRole(auth.role)
+      ? await sql`
+          UPDATE coupons
+          SET
+            title = COALESCE(${body.title ? String(body.title).trim().slice(0, 80) : null}, title),
+            subtitle = COALESCE(${body.subtitle !== undefined ? String(body.subtitle).trim().slice(0, 120) : null}, subtitle),
+            code = COALESCE(${body.code ? String(body.code).trim().toUpperCase().slice(0, 24) : null}, code),
+            points_cost = COALESCE(${body.pointsCost !== undefined ? Math.max(0, Math.round(Number(body.pointsCost))) : null}, points_cost),
+            discount_amount = COALESCE(${body.discountAmount !== undefined ? Math.max(0, Number(body.discountAmount)) : null}, discount_amount),
+            icon = COALESCE(${body.icon ? String(body.icon).trim().slice(0, 40) : null}, icon),
+            active = COALESCE(${body.active !== undefined ? Boolean(body.active) : null}, active)
+          WHERE id = ${id} AND tenant_id = ${auth.tenantId}
+          RETURNING *;
+        `
+      : await sql`
+          UPDATE coupons
+          SET
+            title = COALESCE(${body.title ? String(body.title).trim().slice(0, 80) : null}, title),
+            subtitle = COALESCE(${body.subtitle !== undefined ? String(body.subtitle).trim().slice(0, 120) : null}, subtitle),
+            code = COALESCE(${body.code ? String(body.code).trim().toUpperCase().slice(0, 24) : null}, code),
+            points_cost = COALESCE(${body.pointsCost !== undefined ? Math.max(0, Math.round(Number(body.pointsCost))) : null}, points_cost),
+            discount_amount = COALESCE(${body.discountAmount !== undefined ? Math.max(0, Number(body.discountAmount)) : null}, discount_amount),
+            icon = COALESCE(${body.icon ? String(body.icon).trim().slice(0, 40) : null}, icon),
+            active = COALESCE(${body.active !== undefined ? Boolean(body.active) : null}, active)
+          WHERE id = ${id}
+          RETURNING *;
+        `;
+
+    if (updated.length === 0) {
+      return res.status(404).json({ error: 'Coupon not found for active store' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      coupon: mapCouponRow(updated[0]),
+    });
+  } catch (err: any) {
+    console.error('[Neon Postgres] PATCH /api/coupons/:id error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to update coupon' });
+  }
+});
+
+app.delete('/api/coupons/:id', async (req: Request, res: Response) => {
+  const auth = verifyAuthToken(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  await ensureMigration();
+  if (!sql) {
+    return res.status(500).json({ error: 'Database not configured' });
+  }
+
+  const { id } = req.params;
+  try {
+    await ensureProgramTables();
+    const deleted = !isAdminRole(auth.role)
+      ? await sql`DELETE FROM coupons WHERE id = ${id} AND tenant_id = ${auth.tenantId} RETURNING id;`
+      : await sql`DELETE FROM coupons WHERE id = ${id} RETURNING id;`;
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ error: 'Coupon not found for active store' });
+    }
+    return res.status(200).json({ success: true, id: deleted[0].id });
+  } catch (err: any) {
+    console.error('[Neon Postgres] DELETE /api/coupons/:id error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to delete coupon' });
   }
 });
 

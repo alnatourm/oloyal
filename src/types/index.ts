@@ -4,6 +4,7 @@ export type NavigationPath =
   | 'pass-studio' 
   | 'pos-cashier' 
   | 'customers-crm' 
+  | 'push-and-geo-studio'
   | 'onboarding'
   | 'billing'
   | 'customer-join'

@@ -13,6 +13,7 @@ import { MerchantAuthView } from './views/MerchantAuthView';
 import { LandingPageView } from './views/LandingPageView';
 import { SuperAdminView } from './views/SuperAdminView';
 import { ProfileView } from './views/ProfileView';
+import { PushGeoStudioView } from './views/PushGeoStudioView';
 import { PrivacyPolicyView } from './views/PrivacyPolicyView';
 import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
@@ -303,6 +304,13 @@ export default function App() {
           />
         )}
 
+        {currentPath === 'push-and-geo-studio' && (
+          <PushGeoStudioView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
+          />
+        )}
+
         {currentPath === 'customer-join' && (
           <CustomerEnrollmentView
             activeSlug={activeTenantSlug}
@@ -360,8 +368,10 @@ export default function App() {
 
         {(currentPath === 'onboarding' || currentPath === 'telemetry-hardware') && (
           <OnboardingView
+            activeSlug={activeTenantSlug}
+            userRole={userRole}
             onCompleteStep={() => {
-              setToastMessage('Onboarding Completed! Google Smart Tap v3.2 Live.');
+              setToastMessage(`Program rules & coupons saved for ${activeTenantSlug || 'Store'}!`);
               setCurrentPath('dashboard');
               setTimeout(() => setToastMessage(null), 3500);
             }}
