@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationPath } from '../types';
 import { sounds } from '../utils/sound';
+import { useI18n } from '../utils/i18n';
 
 interface NavigationProps {
   currentPath: NavigationPath;
@@ -17,22 +18,24 @@ export const Navigation: React.FC<NavigationProps> = ({
   userRole = 'merchant',
   onLogout,
 }) => {
+  const { isRtl, t } = useI18n();
+
   const handleNav = (path: NavigationPath) => {
     sounds.click(900, 0.02);
     onNavigate(path);
   };
 
   const allNavItems: { path: NavigationPath; title: string; icon: string; adminOnly?: boolean }[] = [
-    { path: 'dashboard', title: 'Dashboard', icon: 'space_dashboard' },
-    { path: 'pass-studio', title: 'Pass Studio / Designer', icon: 'palette' },
-    { path: 'pos-cashier', title: 'POS Cashier Terminal', icon: 'point_of_sale' },
-    { path: 'customers-crm', title: 'Customers / CRM', icon: 'group' },
-    { path: 'push-and-geo-studio', title: 'Push & Geo Studio', icon: 'near_me' },
-    { path: 'customer-join', title: 'Customer Enrollment (Add to Wallet)', icon: 'add_to_home_screen' },
-    { path: 'onboarding', title: 'Merchant Onboarding', icon: 'tune' },
-    { path: 'reports', title: 'Analytics & Ledger', icon: 'analytics' },
-    { path: 'billing', title: 'SaaS Billing & Limits', icon: 'credit_card' },
-    { path: 'super-admin', title: 'Super Admin Master Issuer', icon: 'admin_panel_settings', adminOnly: true },
+    { path: 'dashboard', title: t('dashboard'), icon: 'space_dashboard' },
+    { path: 'pass-studio', title: t('passStudio'), icon: 'palette' },
+    { path: 'pos-cashier', title: t('posCashier'), icon: 'point_of_sale' },
+    { path: 'customers-crm', title: t('customersCrm'), icon: 'group' },
+    { path: 'push-and-geo-studio', title: t('pushGeo'), icon: 'near_me' },
+    { path: 'customer-join', title: t('customerJoin'), icon: 'add_to_home_screen' },
+    { path: 'onboarding', title: t('onboarding'), icon: 'tune' },
+    { path: 'reports', title: t('reports'), icon: 'analytics' },
+    { path: 'billing', title: t('billing'), icon: 'credit_card' },
+    { path: 'super-admin', title: t('superAdmin'), icon: 'admin_panel_settings', adminOnly: true },
   ];
 
   // Strictly hide super-admin when user is a merchant
@@ -40,7 +43,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   const navItems = allNavItems.filter((item) => !item.adminOnly || isSuperAdmin);
 
   return (
-    <aside className="fixed left-4 lg:left-6 top-6 bottom-6 w-20 z-50 flex flex-col items-center justify-between py-5 bg-surface-container-low rounded-xl tactile-convex transition-all">
+    <aside className="fixed left-4 lg:left-6 rtl:left-auto rtl:right-4 lg:rtl:right-6 top-6 bottom-6 w-20 z-50 flex flex-col items-center justify-between py-5 bg-surface-container-low rounded-xl tactile-convex transition-all">
       <div className="flex flex-col items-center gap-4 w-full min-h-0">
         {/* Brand Logo Button */}
         <button
@@ -83,7 +86,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       <div className="flex flex-col items-center gap-3">
         <button
           onClick={openScannerModal}
-          title="Quick Optical Scanner"
+          title={t('quickScan')}
           className="w-12 h-12 rounded-full bg-surface-container text-[#ff5722] flex items-center justify-center tactile-btn hover:scale-105 transition-all"
         >
           <span className="material-symbols-outlined text-[22px]">
@@ -97,7 +100,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               ? 'bg-[#ff5722] text-white'
               : 'text-on-surface-variant hover:bg-surface-container-high'
           }`}
-          title="Settings"
+          title={t('settings')}
         >
           <span className="material-symbols-outlined text-[20px]">
             settings
@@ -110,7 +113,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               onLogout();
             }}
             className="w-10 h-10 rounded-full flex items-center justify-center text-red-500 hover:bg-red-500/10 transition-all tactile-btn"
-            title="Log Out Session"
+            title={t('logout')}
           >
             <span className="material-symbols-outlined text-[20px]">
               logout

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { sounds } from '../utils/sound';
 import { AUTH_TOKEN_KEY, AUTH_TENANT_ID_KEY, getAuthToken } from '../utils/auth';
+import { useI18n } from '../utils/i18n';
 
 interface LandingPageViewProps {
   onNavigateToDashboard?: () => void;
@@ -22,6 +23,8 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
   onOpenLoginModal,
   onLoginSuccess,
 }) => {
+  const { isRtl, toggleLanguage, t } = useI18n();
+
   // Feature tab deep-dive state
   const [activeTab, setActiveTab] = useState<number>(0);
 
@@ -267,40 +270,54 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
           {/* Navigation links matching screenshot: Platform, Smart Tap, Beacons, Pricing, Enterprise */}
           <nav className="hidden md:flex items-center gap-1.5 p-1 bg-surface-container-low rounded-full shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]">
             <a href="#showcase" className="px-4 py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface font-semibold transition-all">
-              Platform
+              {t('navPlatform')}
             </a>
             <a href="#features" className="px-4 py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface font-semibold transition-all">
-              Smart Tap
+              {t('navSmartTap')}
             </a>
             <a href="#features" className="px-4 py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface font-semibold transition-all">
-              Beacons
+              {t('navBeacons')}
             </a>
             <a href="#pricing" className="px-4 py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface font-semibold transition-all">
-              Pricing
+              {t('navPricing')}
             </a>
             <a href="#enterprise" className="px-4 py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface font-semibold transition-all">
-              Enterprise
+              {t('navEnterprise')}
             </a>
           </nav>
 
-          {/* Right Action Buttons matching image_88028f8b: Login, Get Started Free ->, and User Profile Circle */}
-          <div className="flex items-center gap-3">
+          {/* Right Action Buttons: Language Switcher, Login, Get Started Free, Profile */}
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Prominent Bilingual Language Toggle Button */}
+            <button
+              type="button"
+              onClick={() => {
+                sounds.click(1000, 0.03);
+                toggleLanguage();
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-surface-container-lowest hover:bg-surface-container text-on-surface font-label-md text-label-md font-bold shadow-[-3px_-3px_8px_#ffffff,3px_3px_8px_#d1d9e6] border border-surface-container-highest transition-all"
+              title={isRtl ? 'Switch to English' : 'التبديل إلى العربية'}
+            >
+              <span className="material-symbols-outlined text-[18px] text-[#ff5722]">language</span>
+              <span className="text-xs font-bold">{isRtl ? 'English' : 'العربية'}</span>
+            </button>
+
             <button
               onClick={() => openAuthModal('signin')}
-              className="px-4 py-2 font-label-md text-label-md text-on-surface hover:text-[#ff5722] font-bold transition-colors"
+              className="px-3 sm:px-4 py-2 font-label-md text-label-md text-on-surface hover:text-[#ff5722] font-bold transition-colors"
             >
-              Login
+              {t('navLogin')}
             </button>
             <button
               onClick={() => openAuthModal('signup')}
-              className="px-5 py-2.5 rounded-full bg-[#ff5722] text-white font-label-md text-label-md font-bold shadow-[0_0_20px_rgba(255,87,34,0.35)] hover:brightness-105 active:scale-[0.98] transition-all flex items-center gap-1.5"
+              className="px-4 sm:px-5 py-2.5 rounded-full bg-[#ff5722] text-white font-label-md text-label-md font-bold shadow-[0_0_20px_rgba(255,87,34,0.35)] hover:brightness-105 active:scale-[0.98] transition-all flex items-center gap-1.5"
             >
-              <span>Get Started Free</span>
-              <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+              <span>{t('navGetStarted')}</span>
+              <span className="material-symbols-outlined text-[18px] rtl:rotate-180">arrow_forward</span>
             </button>
             <button
               onClick={() => openAuthModal('signin')}
-              className="w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-on-surface shadow-[-3px_-3px_8px_#ffffff,3px_3px_8px_#d1d9e6] hover:text-[#ff5722] transition-colors"
+              className="w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-on-surface shadow-[-3px_-3px_8px_#ffffff,3px_3px_8px_#d1d9e6] hover:text-[#ff5722] transition-colors shrink-0"
               title="Sign In / Account"
             >
               <span className="material-symbols-outlined text-[20px]">person</span>
@@ -321,19 +338,19 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-container-low shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] mb-6">
               <span className="w-2.5 h-2.5 rounded-full bg-[#ff5722] shadow-[0_0_8px_#ff5722] animate-pulse"></span>
               <span className="font-label-md text-label-md tracking-wider text-on-surface uppercase font-semibold">
-                Google Wallet Smart Tap 2.0 Certified
+                {t('heroCertifiedBadge')}
               </span>
               <span className="material-symbols-outlined text-[16px] text-primary">verified</span>
             </div>
 
             {/* Main Headline */}
             <h1 className="font-headline-lg text-3xl sm:text-4xl lg:text-5xl text-center text-on-surface max-w-4xl tracking-tight leading-tight font-extrabold">
-              Turn Every Tap Into a <span className="font-extrabold text-[#ff5722]">Lifelong Regular</span>
+              {t('heroHeadline')} <span className="font-extrabold text-[#ff5722]">{t('heroHeadlineHighlight')}</span>
             </h1>
 
             {/* Subheadline */}
             <p className="font-body-lg text-body-lg text-on-surface-variant text-center max-w-2xl mt-4 mb-8">
-              PassLoyal empowers modern restaurants and retailers to issue native Google Wallet loyalty passes, trigger lockscreen geo-proximity alerts, and scan via NFC in 0.2s — zero apps required.
+              {t('heroSubtitle')}
             </p>
 
             {/* CTA Buttons Group */}

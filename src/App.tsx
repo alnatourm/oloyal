@@ -19,6 +19,7 @@ import { TermsOfServiceView } from './views/TermsOfServiceView';
 import { AnalyticsView } from './views/AnalyticsView';
 import { SettingsView } from './views/SettingsView';
 import { OpticalScannerModal } from './components/OpticalScannerModal';
+import { useI18n } from './utils/i18n';
 
 import {
   AUTH_ROLE_KEY,
@@ -32,6 +33,7 @@ import {
 } from './utils/auth';
 
 export default function App() {
+  const { isRtl, toggleLanguage, t } = useI18n();
   const [userRole, setUserRole] = useState<'super_admin' | 'admin' | 'merchant'>(() => {
     const token = getAuthToken();
     if (!token) return 'merchant';
@@ -255,7 +257,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f7f9fc] text-[#191c1e] font-sans antialiased">
-      {/* Fixed Left Navigation Sidebar & Top Header - STRICTLY HIDDEN ON PUBLIC SHELL VIEWS */}
+      {/* Fixed Navigation Sidebar & Top Header - STRICTLY HIDDEN ON PUBLIC SHELL VIEWS */}
       {!isPublicShell && (
         <>
           <Navigation
@@ -301,15 +303,26 @@ export default function App() {
             <span className="material-symbols-outlined text-[18px] text-[#ff5722]">fingerprint</span>
             <span>PassLoyal OS</span>
           </button>
-          {currentPath !== 'merchant-auth' && (
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setCurrentPath('merchant-auth')}
-              className="px-4 py-2 rounded-full bg-surface-container-low tactile-convex-sm text-on-surface-variant hover:text-[#ff5722] font-label-md text-label-md font-semibold transition-colors"
+              onClick={toggleLanguage}
+              className="px-3.5 py-1.5 rounded-full bg-surface-container-low tactile-convex-sm text-on-surface font-semibold text-xs hover:text-[#ff5722] flex items-center gap-1.5 transition-colors"
+              title={isRtl ? 'Switch to English' : 'التبديل إلى العربية'}
             >
-              Merchant Sign In
+              <span className="material-symbols-outlined text-[16px] text-[#ff5722]">language</span>
+              <span>{isRtl ? 'English' : 'العربية'}</span>
             </button>
-          )}
+            {currentPath !== 'merchant-auth' && (
+              <button
+                type="button"
+                onClick={() => setCurrentPath('merchant-auth')}
+                className="px-4 py-2 rounded-full bg-surface-container-low tactile-convex-sm text-on-surface-variant hover:text-[#ff5722] font-label-md text-label-md font-semibold transition-colors"
+              >
+                {isRtl ? 'دخول التجار' : 'Merchant Sign In'}
+              </button>
+            )}
+          </div>
         </header>
       )}
 
@@ -320,7 +333,7 @@ export default function App() {
             ? 'w-full'
             : isPublicShell
             ? 'w-full px-4 pt-4 max-w-5xl mx-auto transition-all pb-12'
-            : 'pl-28 lg:pl-32 pr-6 pt-24 max-w-[1600px] mx-auto transition-all pb-12'
+            : 'pl-28 lg:pl-32 pr-6 rtl:pl-6 rtl:pr-28 lg:rtl:pr-32 pt-24 max-w-[1600px] mx-auto transition-all pb-12'
         }
       >
         {currentPath === 'landing' && (
@@ -465,7 +478,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[#ff5722] text-[18px]">verified_user</span>
               <span className="font-bold text-on-surface">PassLoyal OS</span>
-              <span>© 2026 PassLoyal OS • Google Wallet API Verified Issuer</span>
+              <span>© 2026 PassLoyal OS • MENA Dual Wallet Engine</span>
             </div>
 
             <div className="flex items-center gap-6">
@@ -475,7 +488,7 @@ export default function App() {
                   currentPath === 'privacy' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
                 }`}
               >
-                Privacy Policy
+                {isRtl ? 'سياسة الخصوصية' : 'Privacy Policy'}
               </button>
               <button
                 onClick={() => setCurrentPath('terms')}
@@ -483,13 +496,13 @@ export default function App() {
                   currentPath === 'terms' ? 'text-[#ff5722] font-bold' : 'text-on-surface-variant'
                 }`}
               >
-                Terms of Service
+                {isRtl ? 'شروط الخدمة' : 'Terms of Service'}
               </button>
               <a
                 href="mailto:alnatour.m@gmail.com"
                 className="text-on-surface-variant hover:text-[#ff5722] font-semibold"
               >
-                Contact Support
+                {isRtl ? 'الدعم الفني' : 'Contact Support'}
               </a>
             </div>
           </footer>
@@ -507,7 +520,7 @@ export default function App() {
 
       {/* Global Notification Toast */}
       {toastMessage && (
-        <div className="fixed bottom-8 right-8 z-50 bg-surface-container-lowest text-on-surface rounded-full px-6 py-4 tactile-card flex items-center gap-3 ring-1 ring-primary-container/20 shadow-2xl animate-bounce">
+        <div className="fixed bottom-8 right-8 rtl:right-auto rtl:left-8 z-50 bg-surface-container-lowest text-on-surface rounded-full px-6 py-4 tactile-card flex items-center gap-3 ring-1 ring-primary-container/20 shadow-2xl animate-bounce">
           <span className="material-symbols-outlined text-primary-container text-[20px]">
             verified
           </span>
