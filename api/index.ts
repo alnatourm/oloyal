@@ -59,6 +59,12 @@ if (!process.env.AUTH_SECRET && !process.env.SESSION_SECRET && !process.env.JWT_
   );
 }
 
+
+// Helper to create HMAC signature for Apple Pass download links (SEC-04)
+function generatePassToken(memberId: string): string {
+  return crypto.createHmac('sha256', AUTH_SECRET).update(`pass:${memberId}`).digest('hex').slice(0, 16);
+}
+
 interface AuthContext {
   role: 'super_admin' | 'admin' | 'merchant';
   tenantId?: string;
@@ -357,10 +363,9 @@ async function ensureMigration(): Promise<void> {
         try {
           await sql`
             UPDATE tenants 
-            SET status = 'Active',
-                password_hash = COALESCE(password_hash, crypt('admin123', gen_salt('bf')))
+            SET status = 'Active'
             WHERE (slug = 'banlis' OR slug = 'banlis-bistro' OR owner_email = 'banlis@oloyal.com')
-              AND (password_hash IS NULL OR password_hash = '');
+              AND (status IS NULL OR status = '');
           `;
         } catch (banlisErr: any) {
           console.warn('[Migration] Banlis seed password notice:', banlisErr?.message || banlisErr);
@@ -2055,9 +2060,8 @@ async function enrollMemberForTenant(tenant: any, req: Request, res: Response) {
     }
   } catch {}
 
-  if (typeof req.body?.initialPoints === 'number' && !isNaN(req.body.initialPoints)) {
-    welcomePoints = Math.max(0, Math.round(req.body.initialPoints));
-  }
+  // SEC-01: Reject arbitrary initialPoints from public enrollment requests.
+  // Welcome points strictly originate from verified tenant program_configs.welcome_grant.
 
   let insertedMember: any = null;
   try {
@@ -2071,7 +2075,7 @@ async function enrollMemberForTenant(tenant: any, req: Request, res: Response) {
     }
 
     if (welcomePoints > 0) {
-      const txId = `tx-${Date.now()}`;
+      const txId = `tx-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
       try {
         await sql`
           INSERT INTO point_transactions (id, member_id, change_amount, reason)
@@ -2200,7 +2204,8 @@ async function enrollMemberForTenant(tenant: any, req: Request, res: Response) {
     },
     saveToWalletUrl,
     walletUrl: saveToWalletUrl,
-    appleWalletUrl: `/api/passes/apple/${encodeURIComponent(memberIdCode)}`,
+    appleWalletUrl: `/api/passes/apple/${encodeURIComponent(memberIdCode)}?sig=${generatePassToken(memberIdCode)}`,
+    applePassUrl: `/api/passes/apple/${encodeURIComponent(memberIdCode)}?sig=${generatePassToken(memberIdCode)}`,
     qr: memberIdCode,
     qrCodeData: `PASS-LOVAL-NFC:${objectId}`,
     tenant: {
@@ -2431,26 +2436,45 @@ async function handleMemberPointsUpdate(req: Request, rawId: string, body: any, 
       });
     }
 
-    let newPoints = currentPoints;
+    let updatedRows: any[] = [];
     let changeAmount = 0;
-
     if (absolute !== null) {
-      newPoints = Math.max(0, absolute);
-      changeAmount = newPoints - currentPoints;
+      const targetPoints = Math.max(0, absolute);
+      changeAmount = targetPoints - currentPoints;
+      updatedRows = await sql`
+        UPDATE members 
+        SET points = ${targetPoints} 
+        WHERE id = ${currentMember.id} AND tenant_id = ${currentMember.tenant_id} 
+        RETURNING *;
+      `;
+    } else if (delta < 0 && !body?.allowClamp) {
+      // SEC-02: Atomic conditional deduction to eliminate race condition & double spend
+      changeAmount = delta;
+      updatedRows = await sql`
+        UPDATE members 
+        SET points = points + ${delta} 
+        WHERE id = ${currentMember.id} 
+          AND tenant_id = ${currentMember.tenant_id} 
+          AND (points + ${delta}) >= 0 
+        RETURNING *;
+      `;
+      if (updatedRows.length === 0) {
+        return res.status(400).json({
+          error: `Insufficient points balance (${currentPoints} PTS available) or concurrent transaction conflict`,
+        });
+      }
     } else {
       changeAmount = delta;
-      newPoints = Math.max(0, currentPoints + delta);
+      updatedRows = await sql`
+        UPDATE members 
+        SET points = GREATEST(0, points + ${delta}) 
+        WHERE id = ${currentMember.id} AND tenant_id = ${currentMember.tenant_id} 
+        RETURNING *;
+      `;
     }
+    const member = updatedRows[0] || { ...currentMember, points: currentPoints + changeAmount };
 
-    const updatedRows = await sql`
-      UPDATE members 
-      SET points = ${newPoints} 
-      WHERE id = ${currentMember.id} AND tenant_id = ${currentMember.tenant_id}
-      RETURNING *;
-    `;
-    const member = updatedRows[0] || { ...currentMember, points: newPoints };
-
-    const txId = `tx-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const txId = `tx-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     try {
       await sql`
         INSERT INTO point_transactions (id, member_id, tenant_id, change_amount, reason)
@@ -3652,6 +3676,20 @@ router.get('/passes/apple/:memberId', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Member not found' });
     }
     const m = memberRows[0];
+    const sig = typeof req.query.sig === 'string' ? req.query.sig : '';
+    const expectedSig1 = generatePassToken(m.id);
+    const expectedSig2 = generatePassToken(m.member_id || '');
+    const isValidSig = Boolean(sig && (sig === expectedSig1 || sig === expectedSig2));
+
+    // SEC-04: Mask PII to prevent unauthorized customer scraping
+    const rawPhone = m.phone || '';
+    const maskedPhone = isValidSig 
+      ? rawPhone 
+      : (rawPhone ? rawPhone.replace(/(\+\d{1,4})\d+(\d{4})$/, '$1****$2') : '-');
+    const cardholderName = isValidSig
+      ? (m.customer_name || 'Loyalty Member')
+      : (m.customer_name ? m.customer_name.split(' ')[0] + ' ***' : 'Loyalty Member');
+
     const passPayload = {
       formatVersion: 1,
       passTypeIdentifier: 'pass.space.o-tech.loyalty',
@@ -3666,10 +3704,10 @@ router.get('/passes/apple/:memberId', async (req: Request, res: Response) => {
       storeCard: {
         primaryFields: [{ key: 'balance', label: 'POINTS', value: Number(m.points || 0) }],
         secondaryFields: [{ key: 'tier', label: 'TIER', value: m.tier || 'SILVER' }],
-        auxiliaryFields: [{ key: 'cardholder', label: 'CARDHOLDER', value: m.customer_name || 'Loyalty Member' }],
+        auxiliaryFields: [{ key: 'cardholder', label: 'CARDHOLDER', value: cardholderName }],
         backFields: [
           { key: 'memberId', label: 'MEMBER ID', value: m.member_id || m.id },
-          { key: 'phone', label: 'PHONE', value: m.phone || '-' },
+          { key: 'phone', label: 'PHONE', value: maskedPhone },
           { key: 'region', label: 'REGION', value: 'Middle East (MENA)' },
           { key: 'terms', label: 'PROGRAM DETAILS', value: 'Redeemable at all participating locations across the Middle East.' },
         ],

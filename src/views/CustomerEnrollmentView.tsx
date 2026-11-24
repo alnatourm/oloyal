@@ -183,7 +183,8 @@ export const CustomerEnrollmentView: React.FC<CustomerEnrollmentViewProps> = ({
 
       const gUrl = typeof data.saveToWalletUrl === 'string' ? data.saveToWalletUrl : '';
       setJwtLink(gUrl);
-      setApplePassUrl(`/api/passes/apple/${encodeURIComponent(memberCode)}`);
+      const appleUrl = (data as any)?.applePassUrl || (data as any)?.appleWalletUrl || `/api/passes/apple/${encodeURIComponent(memberCode)}`;
+      setApplePassUrl(appleUrl);
       setIsSubmitted(true);
       return data;
     } catch (err) {
