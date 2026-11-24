@@ -2266,7 +2266,8 @@ router.post('/tenants/:slug/enroll', async (req: Request, res: Response) => {
   await ensureMigration();
   if (!sql) {
     const memberCode = 'ME-' + Math.floor(100000 + Math.random() * 900000);
-    return res.json({
+    const applePassUrl = `/api/passes/apple/${encodeURIComponent(memberCode)}?sig=${generatePassToken(memberCode)}`;
+    return res.status(201).json({
       success: true,
       memberId: memberCode,
       points: 100,
@@ -2274,7 +2275,8 @@ router.post('/tenants/:slug/enroll', async (req: Request, res: Response) => {
       tier: 'Silver',
       storeName: slug === 'banlis' ? 'Banlis Coffee & Bakery' : (slug + ' Store'),
       jwtLink: 'https://pay.google.com/gp/v/save/demo-preview-jwt',
-      applePassUrl: '/api/passes/apple/' + memberCode,
+      applePassUrl: applePassUrl,
+      appleWalletUrl: applePassUrl,
     });
   }
 
@@ -3643,6 +3645,12 @@ router.get('/passes/apple/:memberId', async (req: Request, res: Response) => {
   if (!rawId) return res.status(400).json({ error: 'memberId is required' });
 
   if (!sql) {
+    const sig = typeof req.query.sig === 'string' ? req.query.sig : '';
+    const expectedSig = generatePassToken(rawId);
+    const isValidSig = Boolean(sig && sig === expectedSig);
+    const maskedPhone = isValidSig ? '+962791112233' : '+962****2233';
+    const cardholderName = isValidSig ? 'Security Test User' : 'Security ***';
+
     return res.json({
       formatVersion: 1,
       passTypeIdentifier: 'pass.space.o-tech.loyalty',
@@ -3657,7 +3665,13 @@ router.get('/passes/apple/:memberId', async (req: Request, res: Response) => {
       storeCard: {
         primaryFields: [{ key: 'balance', label: 'POINTS', value: 100 }],
         secondaryFields: [{ key: 'tier', label: 'TIER', value: 'SILVER' }],
-        auxiliaryFields: [{ key: 'memberId', label: 'MEMBER ID', value: rawId }],
+        auxiliaryFields: [{ key: 'cardholder', label: 'CARDHOLDER', value: cardholderName }],
+        backFields: [
+          { key: 'memberId', label: 'MEMBER ID', value: rawId },
+          { key: 'phone', label: 'PHONE', value: maskedPhone },
+          { key: 'region', label: 'REGION', value: 'Middle East (MENA)' },
+          { key: 'terms', label: 'PROGRAM DETAILS', value: 'Redeemable at all participating locations across the Middle East.' },
+        ],
       },
       barcodes: [{ format: 'PKBarcodeFormatQR', message: `PASS-LOYAL:${rawId}`, messageEncoding: 'iso-8859-1' }],
     });

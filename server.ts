@@ -2566,6 +2566,7 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
       google_object_id: `3388000000022258509.${memberCode}`,
     };
     const saveToWalletUrl = 'https://pay.google.com/gp/v/save/demo-preview-jwt';
+    const applePassUrl = `/api/passes/apple/${encodeURIComponent(memberCode)}?sig=${generatePassToken(memberCode)}`;
     return res.status(201).json({
       success: true,
       member: mockMember,
@@ -2579,12 +2580,14 @@ app.post('/api/tenants/:slug/enroll', async (req: Request, res: Response) => {
         points: 100,
         tier: 'Silver',
         jwtUrl: saveToWalletUrl,
-        appleWalletUrl: `/api/passes/apple/${encodeURIComponent(memberCode)}`,
+        appleWalletUrl: applePassUrl,
+        applePassUrl: applePassUrl,
         syncedAt: new Date().toISOString(),
       },
       saveToWalletUrl,
       walletUrl: saveToWalletUrl,
-      appleWalletUrl: `/api/passes/apple/${encodeURIComponent(memberCode)}`,
+      appleWalletUrl: applePassUrl,
+      applePassUrl: applePassUrl,
       qr: memberCode,
       qrCodeData: `PASS-LOYAL-NFC:${mockMember.google_object_id}`,
       tenant: {
@@ -3806,6 +3809,12 @@ app.get('/api/passes/apple/:memberId', async (req: Request, res: Response) => {
   if (!rawId) return res.status(400).json({ error: 'memberId is required' });
 
   if (!sql) {
+    const sig = typeof req.query.sig === 'string' ? req.query.sig : '';
+    const expectedSig = generatePassToken(rawId);
+    const isValidSig = Boolean(sig && sig === expectedSig);
+    const maskedPhone = isValidSig ? '+962791112233' : '+962****2233';
+    const cardholderName = isValidSig ? 'Security Test User' : 'Security ***';
+
     return res.json({
       formatVersion: 1,
       passTypeIdentifier: 'pass.space.o-tech.loyalty',
@@ -3820,7 +3829,13 @@ app.get('/api/passes/apple/:memberId', async (req: Request, res: Response) => {
       storeCard: {
         primaryFields: [{ key: 'balance', label: 'POINTS', value: 100 }],
         secondaryFields: [{ key: 'tier', label: 'TIER', value: 'SILVER' }],
-        auxiliaryFields: [{ key: 'memberId', label: 'MEMBER ID', value: rawId }],
+        auxiliaryFields: [{ key: 'cardholder', label: 'CARDHOLDER', value: cardholderName }],
+        backFields: [
+          { key: 'memberId', label: 'MEMBER ID', value: rawId },
+          { key: 'phone', label: 'PHONE', value: maskedPhone },
+          { key: 'region', label: 'REGION', value: 'Middle East (MENA)' },
+          { key: 'terms', label: 'PROGRAM DETAILS', value: 'Redeemable at all participating locations across the Middle East.' },
+        ],
       },
       barcodes: [{ format: 'PKBarcodeFormatQR', message: `PASS-LOYAL:${rawId}`, messageEncoding: 'iso-8859-1' }],
     });
