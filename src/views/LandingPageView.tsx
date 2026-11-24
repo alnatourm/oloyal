@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sounds } from '../utils/sound';
-import { AUTH_TOKEN_KEY, AUTH_TENANT_ID_KEY, getAuthToken } from '../utils/auth';
+import { AUTH_TOKEN_KEY, AUTH_TENANT_ID_KEY } from '../utils/auth';
 import { useI18n } from '../utils/i18n';
 
 interface LandingPageViewProps {
@@ -39,6 +39,10 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
   // Integrated Auth Modal State
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authTab, setAuthTab] = useState<'signin' | 'signup'>('signin');
+
+  // Explore Demo Interactive Pass Simulator (opens without merchant credentials)
+  const [isExploreDemoOpen, setIsExploreDemoOpen] = useState<boolean>(false);
+  const [exploreDemoTab, setExploreDemoTab] = useState<'apple' | 'google'>('google');
 
   // Sign In Form State
   const [identifier, setIdentifier] = useState('');
@@ -241,15 +245,11 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
     }
   };
 
+  // Audit fix: Explore Demo opens the interactive wallet pass simulation directly — no auth gate.
   const handleExploreDemo = () => {
     sounds.click();
-    if (!getAuthToken()) {
-      openAuthModal('signin');
-      return;
-    }
-    if (onNavigateToDashboard) {
-      onNavigateToDashboard();
-    }
+    setExploreDemoTab('google');
+    setIsExploreDemoOpen(true);
   };
 
   return (
@@ -359,8 +359,8 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 onClick={() => openAuthModal('signup')}
                 className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#ff5722] text-white font-headline-sm text-headline-sm font-bold shadow-[0_4px_24px_rgba(255,87,34,0.35),-3px_-3px_8px_#ffffff] hover:brightness-105 transition-all flex items-center justify-center gap-2 group"
               >
-                <span>Deploy Your First Pass Free</span>
-                <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1">
+                <span>{t('deployFirstPass')}</span>
+                <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1 rtl:rotate-180">
                   arrow_forward
                 </span>
               </button>
@@ -369,7 +369,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 className="w-full sm:w-auto px-6 py-3 rounded-full bg-surface-container-lowest text-on-surface font-headline-sm text-headline-sm font-bold shadow-[-5px_-5px_12px_#ffffff,5px_5px_12px_#d1d9e6] hover:shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff] transition-all flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined text-[#ff5722] text-[20px]">play_circle</span>
-                <span>Explore Live Interactive Demo</span>
+                <span>{t('exploreDemo')}</span>
               </button>
             </div>
 
@@ -581,7 +581,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                   Engineered For Zero Friction
                 </span>
                 <h2 className="font-headline-lg text-2xl sm:text-3xl font-bold text-on-surface mt-1 max-w-2xl">
-                  Why Modern Hospitality Groups Are Abandoning Custom Mobile Apps
+                  {t('pillarsHeadline')}
                 </h2>
               </div>
 
@@ -593,7 +593,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                       <span className="material-symbols-outlined text-[26px]">wallet</span>
                     </div>
                     <h3 className="font-headline-md text-lg font-bold text-on-surface mb-2">
-                      Native Google Wallet Passes
+                      {t('pillar1')}
                     </h3>
                     <p className="font-body-md text-sm text-on-surface-variant leading-relaxed mb-6">
                       Zero app downloads or App Store passwords required. Guests add their membership pass in a single tap via table QR code, SMS receipt, or contactless tap.
@@ -620,7 +620,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                       <span className="material-symbols-outlined text-[26px]">contactless</span>
                     </div>
                     <h3 className="font-headline-md text-lg font-bold text-on-surface mb-2">
-                      Smart Tap 2.0 &amp; Optical Scanning
+                      {t('pillar2')}
                     </h3>
                     <p className="font-body-md text-sm text-on-surface-variant leading-relaxed mb-6">
                       Certified Google Smart Tap 2.0 protocol synchronizes pass credentials via encrypted NFC in 200 milliseconds. Seamlessly integrates with POS or our terminal scanner.
@@ -648,7 +648,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                       <span className="material-symbols-outlined text-[26px]">radar</span>
                     </div>
                     <h3 className="font-headline-md text-lg font-bold text-on-surface mb-2">
-                      Autonomous Geo-Fencing &amp; Beacons
+                      {t('pillar3')}
                     </h3>
                     <p className="font-body-md text-sm text-on-surface-variant leading-relaxed mb-6">
                       Trigger high-priority lockscreen notifications when loyalty members walk within 300 meters of your venue. Bluetooth Low Energy Eddystone beacons activate instantly.
@@ -681,7 +681,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     Architectural Deep Dive
                   </span>
                   <h2 className="font-headline-lg text-2xl sm:text-3xl font-bold text-on-surface">
-                    Precision Tooling For High-Volume Venues
+                    {t('precisionTooling')}
                   </h2>
                   <p className="font-body-md text-sm text-on-surface-variant mb-2">
                     Review live transaction telemetry, configure automated geo-fences, and dynamically update pass metadata without app updates.
@@ -689,10 +689,10 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
 
                   <div className="flex flex-col gap-2">
                     {[
-                      { title: 'Smart Tap 2.0 Protocol', desc: 'Instant NFC verification & crypto handshake', icon: 'contactless' },
-                      { title: 'Geo-Radius Push Beacons', desc: 'Lockscreen trigger when customer enters 300m', icon: 'sensors' },
-                      { title: 'Pass Studio Archetypes', desc: 'Drag-and-drop wallet design with live preview', icon: 'palette' },
-                      { title: 'Real-Time POS Telemetry', desc: 'Bi-directional webhook sync with check balances', icon: 'sync_alt' },
+                      { title: t('tabSmartTapProtocol'), desc: t('tabDescSmartTapProtocol'), icon: 'contactless' },
+                      { title: t('tabGeoPushBeacons'), desc: t('tabDescGeoPushBeacons'), icon: 'sensors' },
+                      { title: t('tabArchetypes'), desc: t('tabDescArchetypes'), icon: 'palette' },
+                      { title: t('tabTelemetry'), desc: t('tabDescTelemetry'), icon: 'sync_alt' },
                     ].map((tab, idx) => {
                       const isSelected = activeTab === idx;
                       return (
@@ -800,13 +800,13 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             <div className="w-full max-w-5xl mx-auto rounded-3xl bg-surface-container-low p-6 lg:p-10 shadow-[-10px_-10px_26px_#ffffff,10px_10px_26px_#d1d9e6]">
               <div className="text-center max-w-2xl mx-auto mb-8">
                 <span className="font-label-md text-label-md uppercase tracking-wider text-[#ff5722] font-semibold">
-                  Immediate Business Impact
+                  {t('roiSectionLabel')}
                 </span>
                 <h2 className="font-headline-lg text-2xl sm:text-3xl font-bold text-on-surface mt-1">
-                  Estimate Your Monthly Incremental Revenue
+                  {t('roiTitle')}
                 </h2>
                 <p className="font-body-md text-sm text-on-surface-variant mt-1">
-                  Calculate the exact top-line expansion generated by converting anonymous walk-ins into Google Wallet cardholders.
+                  {t('roiSubtitle')}
                 </p>
               </div>
 
@@ -815,9 +815,9 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 <div className="lg:col-span-7 flex flex-col gap-4">
                   <div className="p-4 rounded-2xl bg-surface shadow-[inset_2px_2px_6px_#d1d9e6,inset_-2px_-2px_6px_#ffffff]">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-sm text-on-surface">Store Locations</span>
+                      <span className="font-bold text-sm text-on-surface">{t('locationsLabel')}</span>
                       <span className="font-bold text-base text-[#ff5722]">
-                        {locations} {locations === 1 ? 'Store' : 'Stores'}
+                        {locations} {locations === 1 ? t('storeWordSingular') : t('storeWordPlural')}
                       </span>
                     </div>
                     <input
@@ -829,15 +829,15 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                       onChange={(e) => setLocations(parseInt(e.target.value) || 1)}
                     />
                     <div className="flex justify-between text-[11px] text-on-surface-variant mt-1 font-mono">
-                      <span>1 Location</span>
-                      <span>25 Locations</span>
+                      <span>{t('rangeLocationsFrom')}</span>
+                      <span>{t('rangeLocationsTo')}</span>
                     </div>
                   </div>
 
                   <div className="p-4 rounded-2xl bg-surface shadow-[inset_2px_2px_6px_#d1d9e6,inset_-2px_-2px_6px_#ffffff]">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-sm text-on-surface">Daily Diners per Store</span>
-                      <span className="font-bold text-base text-[#ff5722]">{diners} Guests</span>
+                      <span className="font-bold text-sm text-on-surface">{t('dailyDinersLabel')}</span>
+                      <span className="font-bold text-base text-[#ff5722]">{diners} {t('guests')}</span>
                     </div>
                     <input
                       className="w-full accent-[#ff5722] cursor-pointer"
@@ -849,14 +849,14 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                       onChange={(e) => setDiners(parseInt(e.target.value) || 50)}
                     />
                     <div className="flex justify-between text-[11px] text-on-surface-variant mt-1 font-mono">
-                      <span>50 Diners</span>
-                      <span>1,500 Diners</span>
+                      <span>{t('rangeDinersFrom')}</span>
+                      <span>{t('rangeDinersTo')}</span>
                     </div>
                   </div>
 
                   <div className="p-4 rounded-2xl bg-surface shadow-[inset_2px_2px_6px_#d1d9e6,inset_-2px_-2px_6px_#ffffff]">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-sm text-on-surface">Average Guest Check</span>
+                      <span className="font-bold text-sm text-on-surface">{t('averageCheckLabel')}</span>
                       <span className="font-bold text-base text-[#ff5722]">${ticket}</span>
                     </div>
                     <input
@@ -869,8 +869,8 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                       onChange={(e) => setTicket(parseInt(e.target.value) || 12)}
                     />
                     <div className="flex justify-between text-[11px] text-on-surface-variant mt-1 font-mono">
-                      <span>$12 / check</span>
-                      <span>$150 / check</span>
+                      <span>{t('rangeTicketFrom')}</span>
+                      <span>{t('rangeTicketTo')}</span>
                     </div>
                   </div>
                 </div>
@@ -881,17 +881,17 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     <span className="material-symbols-outlined text-[28px]">payments</span>
                   </div>
                   <span className="font-label-sm text-xs uppercase tracking-widest text-on-surface-variant font-bold">
-                    Projected Monthly Revenue Lift
+                    {t('revenueLiftLabel')}
                   </span>
                   <div className="text-3xl sm:text-4xl font-extrabold text-[#ff5722] mt-1 tracking-tight">
                     +${incrementalRevenue.toLocaleString()}
                   </div>
                   <p className="text-xs text-on-surface-variant mt-1 mb-4">
-                    Based on empirical 18% repeat visit lift and 0% App Store drop-off.
+                    {t('revenueLiftNote')}
                   </p>
                   <div className="w-full py-2 px-3 rounded-xl bg-surface shadow-sm flex items-center justify-between text-xs font-bold text-tertiary">
-                    <span>Payback Window:</span>
-                    <span>3.8x ROI within 45 days</span>
+                    <span>{t('paybackLabel')}</span>
+                    <span>{t('paybackValue')}</span>
                   </div>
                 </div>
               </div>
@@ -965,10 +965,10 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             <div className="w-full max-w-5xl mx-auto">
               <div className="flex flex-col items-center text-center mb-8">
                 <span className="font-label-md text-label-md uppercase tracking-wider text-[#ff5722] font-semibold">
-                  Architectural Comparison
+                  {t('comparisonTitle')}
                 </span>
                 <h2 className="font-headline-lg text-2xl sm:text-3xl font-bold text-on-surface mt-1">
-                  Why Custom Apps Are Failing Restaurants
+                  {t('comparisonSubtitle')}
                 </h2>
               </div>
 
@@ -976,19 +976,19 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 <table className="w-full text-left bg-surface-container-low text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b border-surface-container-highest bg-surface-container">
-                      <th className="p-4 font-bold text-on-surface">Dimension</th>
-                      <th className="p-4 font-bold text-[#ff5722] bg-surface-container-lowest/80">PassLoyal Wallet</th>
-                      <th className="p-4 font-bold text-on-surface-variant">Custom Mobile App</th>
-                      <th className="p-4 font-bold text-on-surface-variant">Plastic Stamp Card</th>
+                      <th className="p-4 font-bold text-on-surface">{t('cmpHeaderDimension')}</th>
+                      <th className="p-4 font-bold text-[#ff5722] bg-surface-container-lowest/80">{t('cmpHeaderPassLoyalWallet')}</th>
+                      <th className="p-4 font-bold text-on-surface-variant">{t('cmpHeaderCustomApp')}</th>
+                      <th className="p-4 font-bold text-on-surface-variant">{t('cmpHeaderStamp')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container-highest">
                     {[
-                      { dim: 'App Store Download Friction', pass: '0% (Saved in 1 Tap)', app: '86% Drop-off Rate', stamp: 'None (Physical)' },
-                      { dim: 'Lockscreen Geo-Proximity', pass: 'Native 300m Beacons', app: 'Requires App Permissions', stamp: 'Impossible' },
-                      { dim: 'NFC Smart Tap Speed', pass: '0.2s Handshake', app: 'Slow QR Screen Unlock', stamp: 'Manual Punch Card' },
-                      { dim: 'Launch Timeline', pass: 'Under 15 Minutes', app: '4-6 Months Dev Work', stamp: '2-3 Weeks Printing' },
-                      { dim: 'Maintenance & Store Fees', pass: '$0 / Included', app: '$25k+ Annual Dev Costs', stamp: 'Constant Reprinting' },
+                      { dim: t('cmpDimFriction'), pass: t('cmpPassAppStore'), app: t('cmpAppFriction'), stamp: t('cmpStampNone') },
+                      { dim: t('cmpDimGeoProximity'), pass: t('cmpPassLockscreen'), app: t('cmpAppLockscreen'), stamp: t('cmpStampImpossible') },
+                      { dim: t('cmpDimNfc'), pass: t('cmpPassNfc'), app: t('cmpAppSlowQr'), stamp: t('cmpAppManual') },
+                      { dim: t('cmpDimLaunch'), pass: t('cmpPassLaunch'), app: t('cmpAppDevWork'), stamp: t('cmpStampPrint') },
+                      { dim: t('cmpDimFees'), pass: t('cmpPassFree'), app: t('cmpAppDevCosts'), stamp: t('cmpStampReprint') },
                     ].map((row, idx) => (
                       <tr key={idx} className="hover:bg-surface-container/40">
                         <td className="p-3.5 font-bold text-on-surface">{row.dim}</td>
@@ -1011,13 +1011,13 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             <div className="w-full max-w-6xl mx-auto">
               <div className="flex flex-col items-center text-center mb-12">
                 <span className="font-label-md text-label-md uppercase tracking-wider text-[#ff5722] font-semibold">
-                  Transparent SaaS Packages
+                  {t('pricingHeader')}
                 </span>
                 <h2 className="font-headline-lg text-3xl sm:text-4xl font-extrabold text-on-surface mt-1">
-                  Predictable Pricing for Growing Merchants
+                  {t('pricingTitle')}
                 </h2>
                 <p className="font-body-md text-sm text-on-surface-variant max-w-xl mt-2">
-                  All plans include zero App Store commissions, unlimited lockscreen geo-beacons, and Google Smart Tap 2.0 verification.
+                  {t('pricingSubtitle')}
                 </p>
               </div>
 
@@ -1026,32 +1026,32 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 <div className="rounded-3xl bg-surface-container-low p-8 shadow-[-8px_-8px_20px_#ffffff,8px_8px_20px_#d1d9e6] flex flex-col justify-between relative border border-transparent hover:border-surface-container-highest transition-all">
                   <div>
                     <span className="font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold">
-                      Starter Package
+                      {t('starterPlan')}
                     </span>
-                    <h3 className="font-headline-lg text-2xl font-bold text-on-surface mt-1">Single Venue</h3>
+                    <h3 className="font-headline-lg text-2xl font-bold text-on-surface mt-1">{t('starterName')}</h3>
                     <div className="mt-4 mb-6 flex items-baseline gap-1">
                       <span className="text-4xl font-extrabold text-on-surface">$49</span>
                       <span className="text-on-surface-variant font-semibold text-sm">/month</span>
                     </div>
                     <p className="text-xs text-on-surface-variant mb-6">
-                      Perfect for boutique cafes, neighborhood bakeries, and single-store restaurateurs.
+                      {t('starterDesc')}
                     </p>
                     <ul className="space-y-3 text-xs text-on-surface mb-8">
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Up to <strong>500 active passes</strong></span>
+                        <span>{t('starterLimit')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Google Smart Tap 2.0 NFC</span>
+                        <span>{t('starterNfc')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>1 Geo-Fence Proximity Beacon</span>
+                        <span>{t('starterBeacon')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Standard optical QR scanner</span>
+                        <span>{t('starterScanner')}</span>
                       </li>
                     </ul>
                   </div>
@@ -1059,43 +1059,43 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     onClick={() => openAuthModal('signup', 'starter')}
                     className="w-full py-3 rounded-full bg-surface-container text-on-surface hover:bg-[#ff5722] hover:text-white font-label-md text-label-md font-bold transition-all shadow-sm"
                   >
-                    Select Starter Plan
+                    {t('selectStarter')}
                   </button>
                 </div>
 
                 {/* Growth - Popular */}
                 <div className="rounded-3xl bg-surface-container-lowest p-8 shadow-[-10px_-10px_24px_#ffffff,10px_10px_24px_#d1d9e6] ring-2 ring-[#ff5722] flex flex-col justify-between relative">
                   <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[#ff5722] text-white font-mono text-[11px] font-bold uppercase tracking-wider shadow-md">
-                    Most Popular
+                    {t('growthHeader')}
                   </span>
                   <div>
                     <span className="font-label-md text-xs uppercase tracking-wider text-[#ff5722] font-bold">
-                      Growth Package
+                      {t('growthPlan')}
                     </span>
-                    <h3 className="font-headline-lg text-2xl font-bold text-on-surface mt-1">Multi-Unit Brands</h3>
+                    <h3 className="font-headline-lg text-2xl font-bold text-on-surface mt-1">{t('growthName')}</h3>
                     <div className="mt-4 mb-6 flex items-baseline gap-1">
                       <span className="text-4xl font-extrabold text-[#ff5722]">$149</span>
                       <span className="text-on-surface-variant font-semibold text-sm">/month</span>
                     </div>
                     <p className="text-xs text-on-surface-variant mb-6">
-                      Designed for fast casual chains, busy bistros, and expanding hospitality groups.
+                      {t('growthDesc')}
                     </p>
                     <ul className="space-y-3 text-xs text-on-surface mb-8">
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Up to <strong>5,000 active passes</strong></span>
+                        <span>{t('growthLimit')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Unlimited Geo-Fence Beacons</span>
+                        <span>{t('growthBeacons')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>POS Bi-directional Webhooks</span>
+                        <span>{t('growthWebhooks')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Priority Admin Review &amp; Approval</span>
+                        <span>{t('growthApproval')}</span>
                       </li>
                     </ul>
                   </div>
@@ -1103,7 +1103,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     onClick={() => openAuthModal('signup', 'growth')}
                     className="w-full py-3.5 rounded-full bg-[#ff5722] text-white font-label-md text-label-md font-bold shadow-lg hover:brightness-105 transition-all"
                   >
-                    Select Growth Plan
+                    {t('selectGrowth')}
                   </button>
                 </div>
 
@@ -1111,32 +1111,32 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 <div className="rounded-3xl bg-surface-container-low p-8 shadow-[-8px_-8px_20px_#ffffff,8px_8px_20px_#d1d9e6] flex flex-col justify-between relative border border-transparent hover:border-surface-container-highest transition-all">
                   <div>
                     <span className="font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold">
-                      Scale Package
+                      {t('scalePlan')}
                     </span>
-                    <h3 className="font-headline-lg text-2xl font-bold text-on-surface mt-1">High Volume Fleets</h3>
+                    <h3 className="font-headline-lg text-2xl font-bold text-on-surface mt-1">{t('scaleName')}</h3>
                     <div className="mt-4 mb-6 flex items-baseline gap-1">
                       <span className="text-4xl font-extrabold text-on-surface">$399</span>
                       <span className="text-on-surface-variant font-semibold text-sm">/month</span>
                     </div>
                     <p className="text-xs text-on-surface-variant mb-6">
-                      Engineered for regional franchises, stadiums, and multi-location retail networks.
+                      {t('scaleDesc')}
                     </p>
                     <ul className="space-y-3 text-xs text-on-surface mb-8">
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Up to <strong>50,000 active passes</strong></span>
+                        <span>{t('scaleLimit')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Dedicated RSA256 Signing Key</span>
+                        <span>{t('scaleSigningKey')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Sub-second POS Telemetry Streams</span>
+                        <span>{t('scaleTelemetry')}</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#ff5722] text-[18px]">check_circle</span>
-                        <span>Dedicated Account Manager &amp; SLA</span>
+                        <span>{t('scaleAccountManager')}</span>
                       </li>
                     </ul>
                   </div>
@@ -1144,7 +1144,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     onClick={() => openAuthModal('signup', 'scale')}
                     className="w-full py-3 rounded-full bg-surface-container text-on-surface hover:bg-[#ff5722] hover:text-white font-label-md text-label-md font-bold transition-all shadow-sm"
                   >
-                    Select Scale Plan
+                    {t('selectScale')}
                   </button>
                 </div>
               </div>
@@ -1203,7 +1203,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 <span className="material-symbols-outlined text-[32px]">contactless</span>
               </div>
               <h2 className="font-headline-lg text-2xl sm:text-3xl font-extrabold text-on-surface max-w-2xl">
-                Ready to turn foot traffic into VIP retention?
+                {t('finalCtaTitle')}
               </h2>
               <p className="text-sm sm:text-base text-on-surface-variant max-w-xl mt-2 mb-6">
                 Deploy Google Wallet passes across your locations today. No hardware replacements, zero customer download barriers.
@@ -1214,8 +1214,8 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                   onClick={() => openAuthModal('signup')}
                   className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#ff5722] text-white font-bold shadow-lg hover:brightness-105 transition-all flex items-center justify-center gap-2 group"
                 >
-                  <span>Get Started with 100 Free Passes</span>
-                  <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1">
+                  <span>{t('finalCtaAction1')}</span>
+                  <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1 rtl:rotate-180">
                     arrow_forward
                   </span>
                 </button>
@@ -1224,21 +1224,21 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                   className="w-full sm:w-auto px-6 py-3 rounded-full bg-surface-container-low text-on-surface font-bold hover:bg-surface-container-high transition-all flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-[#ff5722] text-[20px]">play_circle</span>
-                  <span>Explore Terminal Console</span>
+                  <span>{t('finalCtaAction2')}</span>
                 </button>
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-4 text-on-surface-variant text-xs">
                 <span className="flex items-center gap-1 font-semibold text-on-surface">
-                  <span className="material-symbols-outlined text-[#ff5722] text-[16px]">check</span> No credit card required
+                  <span className="material-symbols-outlined text-[#ff5722] text-[16px]">check</span> {t('ctaNote1')}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
                 <span className="flex items-center gap-1 font-semibold text-on-surface">
-                  <span className="material-symbols-outlined text-[#ff5722] text-[16px]">check</span> Plug-and-play POS compatibility
+                  <span className="material-symbols-outlined text-[#ff5722] text-[16px]">check</span> {t('ctaNote2')}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
                 <span className="flex items-center gap-1 font-semibold text-on-surface">
-                  <span className="material-symbols-outlined text-[#ff5722] text-[16px]">check</span> 5-minute automated setup
+                  <span className="material-symbols-outlined text-[#ff5722] text-[16px]">check</span> {t('ctaNote3')}
                 </span>
               </div>
             </div>
@@ -1256,16 +1256,16 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 onClick={() => openAuthModal('signin')}
                 className="hover:text-[#ff5722] transition-colors"
               >
-                Sign In
+                {t('footerSignIn')}
               </button>
               <button
                 onClick={() => openAuthModal('signup')}
                 className="hover:text-[#ff5722] transition-colors"
               >
-                Register Store
+                {t('footerRegister')}
               </button>
               <a href="mailto:alnatour.m@gmail.com" className="hover:text-[#ff5722] transition-colors">
-                Contact Support
+                {t('footerContact')}
               </a>
             </div>
           </footer>
@@ -1651,6 +1651,102 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Explore Demo Interactive Pass Simulator (audit fix: opens directly, no auth gate) */}
+      {isExploreDemoOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm rounded-3xl bg-surface-container-low text-on-surface shadow-2xl ring-1 ring-white/90 overflow-hidden animate-in zoom-in-90 duration-200">
+            <div className="flex items-center justify-between p-4 border-b border-surface-container-highest">
+              <h3 className="font-headline-sm text-headline-sm font-bold">
+                {t('exploreDemoTitle')}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsExploreDemoOpen(false)}
+                className="w-9 h-9 rounded-full bg-surface-container-lowest flex items-center justify-center shadow-sm transition-colors hover:text-[#ff5722]"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <div className="flex gap-2 px-4 py-2 border-b border-surface-container-highest">
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.click();
+                  setExploreDemoTab('apple');
+                }}
+                className={`flex-1 py-2 rounded-full font-bold text-xs transition-all ${exploreDemoTab === 'apple' ? 'bg-surface-container-highest text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                Apple Wallet
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.click();
+                  setExploreDemoTab('google');
+                }}
+                className={`flex-1 py-2 rounded-full font-bold text-xs transition-all ${exploreDemoTab === 'google' ? 'bg-surface-container-highest text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                Google Wallet
+              </button>
+            </div>
+
+            <p className="px-5 py-2 text-xs text-on-surface-variant">
+              {t(exploreDemoTab === 'apple' ? 'appleWalletDesc' : 'googleWalletDesc')}
+            </p>
+
+            {/* Simulated pass card */}
+            <div className="p-6">
+              <div
+                className="w-full text-white rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col justify-between h-56 border border-white/20"
+                style={{ background: 'linear-gradient(135deg, #ff5722, #1f2229)' }}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center font-bold text-xl shadow-md text-[#ff5722]">
+                      P
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-[16px] leading-tight">PassLoyal</h4>
+                      <span className="text-[11px] text-white/80 font-medium">Google Wallet Smart Tap</span>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-black/25 text-amber-300 font-bold text-[11px] tracking-wider uppercase border border-white/20">
+                    Bronze
+                  </span>
+                </div>
+                <div className="my-2">
+                  <span className="text-[11px] text-white/80 uppercase font-bold tracking-wider block">
+                    {t('demoPointsLabel')}
+                  </span>
+                  <span className="text-4xl font-extrabold tracking-tight">100</span>
+                </div>
+                <div className="flex items-end justify-between pt-2 border-t border-white/20">
+                  <span className="text-[10px] text-white/70 uppercase block">{t('demoMemberName')}</span>
+                  <span className="flex items-center gap-1 text-[11px] bg-black/20 px-2.5 py-1 rounded-full border border-white/10">
+                    <span className="material-symbols-outlined text-[14px]">nfc</span>
+                    Smart Tap Ready
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 pt-0">
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.chime();
+                  setIsExploreDemoOpen(false);
+                }}
+                className="w-full py-3 rounded-full bg-[#ff5722] text-white font-bold transition-transform active:scale-[0.98] hover:brightness-105"
+              >
+                {t('done')}
+              </button>
+            </div>
           </div>
         </div>
       )}
